@@ -18,6 +18,16 @@ See ADR 0001 and ADR 0002.
 4. Builder saves go through validation on both sides. Invalid props are rejected with field level errors, never silently stored.
 5. Publishing in TYPO3 dispatches a signed, idempotent webhook. The receiver tracks job status and reports real build or revalidation results. No false success.
 
+## Builder (GrapesJS, external, API only)
+
+The visual builder is GrapesJS (BSD-3-Clause, ADR 0005) running in the Astro app at `/builder`. There is no builder interface inside the TYPO3 backend; TYPO3 is the backend engine and the builder talks to it through the content API only.
+
+- Component types and blocks are generated from the shared registry at runtime (`apps/astro-frontend/src/lib/grapesRegistry.mjs`): traits come from the props schema, and canvas markup mirrors the Astro renderers for the same props.
+- A builder component type is a TYPO3 core content element (CType `astro_builder_<id with dots and dashes as underscores>`), and its traits are the element's `tt_content` fields. Props travel as `data-prop-*` attributes on canvas components, so the canvas serializes back to the page JSON elements array losslessly.
+- Persistence is a custom GrapesJS storage type `typo3-api` (`apps/astro-frontend/src/lib/typo3Storage.mjs`): load from `GET /api/content/v1/pages/<slug>`, store by posting page JSON to `POST /api/builder/save`. One constant, `TYPO3_API_BASE`, selects the API host; empty means the same origin demo API in this app.
+- Element types are read from and created through `GET` and `POST /api/v1/element-types` (see `docs/CONTENT_API.md`). Created types register into the builder live and, on the TYPO3 side, into `tt_content` via the extension's registry table and TCA override.
+- Style Manager edits are canvas presentation only and are not part of the content contract.
+
 ## Rendering mode
 
 SSR with the Node adapter (ADR 0003). Public pages could be prerendered later for known slugs, but the demo and first release use server rendering so preview, API routes and builder save work in one deployment.
