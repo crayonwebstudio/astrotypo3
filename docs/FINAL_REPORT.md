@@ -78,3 +78,16 @@ No phase was skipped silently. Phases 4, 11, 12, 13 and 14 are partial for the r
 - Coolify: project astrotypo3 (kdygvgpt7khbtfnqqsxtqyct), app astrotypo3 (lbjuhudf3sqn1mrq6qr6u6ji) on Woodwolf server, deployment us4st3kgyz7igtauk7whr25a finished 2026-10-20T10:16:03Z, commit b376279
 - Live verification at https://astrotypo3.woodwolfdigital.com on 2026-10-20: /, /about, /builder, /templates, /audit, /sitemap.xml all HTTP 200, homepage title correct, content API 200, draft API 401 without token, preview 200 with demo token, AI generate 200 with mock provider labelled
 - Local run output: docs/LOCAL_RUN_OUTPUT.md (10/10 tests, build pass, full smoke suite pass on localhost:4321)
+
+## TYPO3 local verification addendum (2026-10-20)
+
+Full detail: `docs/TYPO3_LOCAL_VERIFICATION.md`. Test instance: `~/workspace/astrotypo3-typo3-test/` (local only, not deployed).
+
+- Environment: PHP 8.3.6 (apt, with xml, mbstring, intl, gd, zip, curl, sqlite3, mysql, apcu), Composer 2.10.3, TYPO3 CMS 13.4.36 from `typo3/cms-base-distribution:^13.4` on SQLite.
+- `php -l` on all extension PHP files: 22 checked, 22 passed, 0 failed. This replaces the earlier structural smoke check as the PHP syntax evidence.
+- Extension installed via a Composer path repository, listed by TYPO3 as `astro_builder, dev-main, Local, active`; `extension:setup` OK; tables `tx_astrobuilder_element`, `tx_astrobuilder_audit` and `tx_astrobuilder_ai_usage` created in the real database.
+- Non-interactive `typo3 setup` created the site (root page uid 1, slug `/`) and a local-only backend admin `astro_admin`; the password lives only in the test project's `LOCAL_ADMIN.txt`, never in this repository. The instance serves its frontend over HTTP 200 on localhost.
+- Two real defects were found only because a real TYPO3 ran the code, and both are fixed in this repository: (1) `Services.yaml` had no alias for `AiProviderInterface`, so the DI container failed and TYPO3 setup died; the alias now points to the labelled `MockProvider` default. (2) `PageContentService` used `\PDO::PARAM_INT` with Doctrine DBAL 4, which throws and was silently caught, making every content API page lookup return 404; it now uses `Connection::PARAM_INT`.
+- API verified at controller level through the real DI container: published page 200 with the real root page, missing page 404, draft without token 401, registry loads all 15 components and all template groups when the shared contract path is configured (empty registry when it is not, a documented configuration gap).
+- tt_content two-way mapping: the native mechanisms are verified (DataHandler created CType `text` and `header` records with 0 errors; QueryBuilder read them back; a `tx_astrobuilder_element` row persisted). The extension itself does not yet map elements: `PageContentService` returns `elements: []`, no CType registration exists, and the builder save action does not persist. Options for registry driven CType registration (TCA overrides plus a mapping in the shared contract) are documented in the verification doc.
+- Still unverified or open after this addendum: HTTP routing to the PHP controllers (API paths return TYPO3's 404 page until site routes or an API entry point are added), a deployed TYPO3 staging instance, a real AI provider, and real publishing.
