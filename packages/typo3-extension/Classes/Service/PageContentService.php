@@ -36,7 +36,7 @@ final class PageContentService
             $row = $queryBuilder->select('uid', 'title', 'slug')
                 ->from('pages')
                 ->where($queryBuilder->expr()->eq('slug', $queryBuilder->createNamedParameter($slug)))
-                ->andWhere($queryBuilder->expr()->eq('deleted', $queryBuilder->createNamedParameter(0, \PDO::PARAM_INT)))
+                ->andWhere($queryBuilder->expr()->eq('deleted', $queryBuilder->createNamedParameter(0, \TYPO3\CMS\Core\Database\Connection::PARAM_INT)))
                 ->executeQuery()
                 ->fetchAssociative();
         } catch (\Throwable) {
