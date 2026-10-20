@@ -1,0 +1,20 @@
+# Local development only.
+# The astro service runs the full demo on fixtures.
+# The typo3 service is a placeholder for PHP syntax reference: it mounts the
+# extension into a php:8.3 image. It does NOT run a full TYPO3 installation.
+# For a real TYPO3, follow docs/INSTALLATION.md with a TYPO3 13.4 project.
+services:
+  astro:
+    build: .
+    ports:
+      - "4321:4321"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=4321
+      # - TYPO3_CONTENT_API_URL=http://host.docker.internal:8080/api/content/v1
+  typo3-php-reference:
+    image: php:8.3-cli
+    volumes:
+      - ./packages/typo3-extension:/extension:ro
+      - ./packages/shared-contract:/shared-contract:ro
+    command: ["php", "-v"]
