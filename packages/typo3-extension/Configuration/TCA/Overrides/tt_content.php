@@ -38,19 +38,35 @@ use TYPO3\CMS\Core\Utility\ExtensionManagementUtility;
         }
     }
 
-    // Custom element types created through the API. The database may not be
-    // ready during early bootstrap or install, so failures are ignored here.
+    // Custom element types created through the API. TYPO3 forbids using the
+    // ConnectionPool during TCA loading ("Use lazy loading instead"), so the
+    // registry table is read through a plain PDO connection built from the
+    // TYPO3 database configuration. Failures are ignored: the table may not
+    // exist yet before extension setup, and core types above still register.
     try {
-        $connection = \TYPO3\CMS\Core\Utility\GeneralUtility::makeInstance(
-            \TYPO3\CMS\Core\Database\ConnectionPool::class
-        )->getConnectionForTable('tx_astrobuilder_element_type');
-        foreach ($connection->select(['type_id', 'label'], 'tx_astrobuilder_element_type', ['deleted' => 0, 'hidden' => 0]) as $row) {
-            $ctype = 'astro_builder_' . str_replace(['.', '-'], '_', (string)$row['type_id']);
-            $astroTypes[$ctype] = (string)($row['label'] ?? $ctype);
+        $dbConfig = $GLOBALS['TYPO3_CONF_VARS']['DB']['Connections']['Default'] ?? null;
+        $pdo = null;
+        if (is_array($dbConfig)) {
+            $driver = (string)($dbConfig['driver'] ?? '');
+            if ($driver === 'pdo_sqlite' && (string)($dbConfig['path'] ?? '') !== '') {
+                $pdo = new \PDO('sqlite:' . (string)$dbConfig['path']);
+            } elseif ($driver === 'pdo_mysql' || $driver === 'mysqli') {
+                $dsn = 'mysql:host=' . (string)($dbConfig['host'] ?? 'localhost')
+                    . ';port=' . (int)($dbConfig['port'] ?? 3306)
+                    . ';dbname=' . (string)($dbConfig['dbname'] ?? '');
+                $pdo = new \PDO($dsn, (string)($dbConfig['user'] ?? ''), (string)($dbConfig['password'] ?? ''));
+            }
+        }
+        if ($pdo instanceof \PDO) {
+            $statement = $pdo->query('SELECT type_id, label FROM tx_astrobuilder_element_type WHERE deleted = 0 AND hidden = 0');
+            foreach (($statement !== false ? $statement->fetchAll(\PDO::FETCH_ASSOC) : []) as $row) {
+                $ctype = 'astro_builder_' . str_replace(['.', '-'], '_', (string)$row['type_id']);
+                $astroTypes[$ctype] = (string)($row['label'] ?? $ctype);
+            }
         }
     } catch (\Throwable) {
-        // Table does not exist yet (before extension setup); core types from
-        // the bundled contract above are still registered.
+        // See comment above; registration of core types must not break when
+        // the custom type table is unavailable at TCA build time.
     }
 
     if ($astroTypes === []) {
