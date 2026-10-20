@@ -1,0 +1,54 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import templates from '../data/templates.json';
+const data: any = templates;
+---
+<BaseLayout title="Template library: AstroTYPO3" description="Presets, section templates, page templates and a site starter for the AstroTYPO3 builder.">
+  <div class="container" style="padding: 2.5rem 1.25rem;">
+    <p><a href="/">Home</a> | <a href="/builder">Builder</a></p>
+    <h1>Template library</h1>
+    <p>Applying a template loads it into the builder as a draft. It never silently overwrites your saved draft: page and section templates open in the builder where you choose to keep or replace, and your previous draft stays in local storage history through undo.</p>
+
+    <h2>Element presets</h2>
+    <div class="grid">
+      {data.elementPresets.map((t: any) => <article class="card"><h3>{t.label}</h3><p>Component: {t.element.componentId}</p><button data-apply-preset={t.id}>Use in builder</button></article>)}
+    </div>
+
+    <h2>Section templates</h2>
+    <div class="grid">
+      {data.sectionTemplates.map((t: any) => <article class="card"><h3>{t.label}</h3><p>Category: {t.category} | Elements: {t.elements.length}</p><button data-apply-section={t.id}>Use in builder</button></article>)}
+    </div>
+
+    <h2>Page templates</h2>
+    <div class="grid">
+      {data.pageTemplates.map((t: any) => <article class="card"><h3>{t.label}</h3><p>Slug: {t.slug} | Elements: {t.elements.length}</p><button data-apply-page={t.id}>Open as draft in builder</button></article>)}
+    </div>
+
+    <h2>Site templates</h2>
+    <div class="grid">
+      {data.siteTemplates.map((t: any) => <article class="card"><h3>{t.label}</h3><p>Pages: {t.pages.join(', ')}</p><p>Primary color: {t.tokens.colorPrimary} | Accent: {t.tokens.colorAccent}</p><button data-apply-site={t.id}>Start from this site template</button></article>)}
+    </div>
+  </div>
+  <script define:vars={{ templateData: data }}>
+    function go(payload) {
+      localStorage.setItem('astrotypo3-apply-template', JSON.stringify(payload));
+      window.location.href = '/builder';
+    }
+    document.querySelectorAll('[data-apply-preset]').forEach((b) => b.addEventListener('click', () => {
+      const t = templateData.elementPresets.find((x) => x.id === b.getAttribute('data-apply-preset'));
+      go({ mode: 'append', elements: [t.element] });
+    }));
+    document.querySelectorAll('[data-apply-section]').forEach((b) => b.addEventListener('click', () => {
+      const t = templateData.sectionTemplates.find((x) => x.id === b.getAttribute('data-apply-section'));
+      go({ mode: 'append', elements: t.elements });
+    }));
+    document.querySelectorAll('[data-apply-page]').forEach((b) => b.addEventListener('click', () => {
+      const t = templateData.pageTemplates.find((x) => x.id === b.getAttribute('data-apply-page'));
+      if (confirm('Open this page template in the builder? Choose OK to replace the builder canvas, or Cancel to keep your current draft.')) go({ mode: 'replace', elements: t.elements, title: t.title, slug: t.slug });
+    }));
+    document.querySelectorAll('[data-apply-site]').forEach((b) => b.addEventListener('click', () => {
+      const home = templateData.pageTemplates.find((x) => x.id === 'page.home');
+      if (confirm('Start from the agency site template? This replaces the builder canvas with the home page template.')) go({ mode: 'replace', elements: home.elements, title: home.title, slug: home.slug });
+    }));
+  </script>
+</BaseLayout>
