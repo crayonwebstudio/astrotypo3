@@ -92,8 +92,12 @@ final class BuilderApiController
         try {
             $connectionPool = GeneralUtility::makeInstance(ConnectionPool::class);
             $queryBuilder = $connectionPool->getQueryBuilderForTable('pages');
+            // A save must also find hidden (not yet launched) pages; the
+            // default restriction container would silently exclude them.
+            $queryBuilder->getRestrictions()->removeAll()
+                ->add(GeneralUtility::makeInstance(\TYPO3\CMS\Core\Database\Query\Restriction\DeletedRestriction::class));
             $row = $queryBuilder->select('uid')->from('pages')
-                ->where($queryBuilder->expr()->eq('slug', $queryBuilder->createNamedParameter($page->slug)))
+                ->where($queryBuilder->expr()->eq('slug', $queryBuilder->createNamedParameter(PageContentService::normalizeSlug($page->slug))))
                 ->andWhere($queryBuilder->expr()->eq('deleted', $queryBuilder->createNamedParameter(0, Connection::PARAM_INT)))
                 ->executeQuery()->fetchAssociative();
             return is_array($row) ? (int)$row['uid'] : 0;
