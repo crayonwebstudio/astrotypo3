@@ -1,0 +1,9 @@
+---
+const { element, preview = false } = Astro.props;
+const p = element?.props ?? {};
+const attrs = preview ? { 'data-astro-builder-id': element.id, class: 'preview-editable' } : {};
+---
+
+<div {...attrs} style={`display:grid; gap: 1.25rem; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));`}>
+  <slot />
+</div>
