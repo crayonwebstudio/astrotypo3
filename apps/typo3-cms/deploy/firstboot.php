@@ -76,6 +76,39 @@ function fbSqliteHasTable(string $dbFile, string $table): bool
     }
 }
 
+/**
+ * TYPO3 13.4 setup creates the sqlite database under a hashed file name
+ * (var/sqlite/cms-<hash>.sqlite), not cms.sqlite. The authoritative
+ * location is the path stored in settings.php.
+ */
+function fbResolveDbFile(string $appDir, string $settingsFile, string $default): string
+{
+    if (is_file($settingsFile)) {
+        $settings = require $settingsFile;
+        if (is_array($settings)) {
+            $conn = $settings['DB']['Connections']['Default'] ?? [];
+            if (($conn['driver'] ?? '') === 'pdo_sqlite') {
+                $path = $conn['path'] ?? '';
+                if (is_string($path) && $path !== '') {
+                    return str_starts_with($path, '/') ? $path : $appDir . '/' . ltrim($path, '/');
+                }
+            }
+        }
+    }
+    return $default;
+}
+
+function fbPointSettingsAtDb(string $settingsFile, string $dbFile): void
+{
+    $settings = require $settingsFile;
+    if (!is_array($settings)) {
+        return;
+    }
+    $settings['DB']['Connections']['Default']['driver'] = 'pdo_sqlite';
+    $settings['DB']['Connections']['Default']['path'] = $dbFile;
+    file_put_contents($settingsFile, "<?php\nreturn " . var_export($settings, true) . ";\n");
+}
+
 function fbIsInstalled(string $settingsFile, string $dbFile): bool
 {
     return is_file($settingsFile)
@@ -89,6 +122,30 @@ if ($adminPassword === '' || $installPassword === '') {
 }
 
 chdir($appDir);
+
+// Resolve the real database location first (hashed file name in TYPO3 13.4).
+$dbFile = fbResolveDbFile($appDir, $settingsFile, $dbFile);
+if ($dbFile !== $appDir . '/var/sqlite/cms.sqlite') {
+    fbLog('database path from settings: ' . $dbFile);
+}
+
+// If settings point at an empty database but a populated sqlite file from
+// an earlier setup exists, repoint settings at the populated file instead
+// of ever re-running the setup on a live installation.
+if (!fbIsInstalled($settingsFile, $dbFile) && fbConfiguredDriver($settingsFile) === 'pdo_sqlite') {
+    $candidates = array_merge(
+        glob($appDir . '/var/sqlite/*.sqlite') ?: [],
+        glob($appDir . '/var/*.sqlite') ?: []
+    );
+    foreach ($candidates as $candidate) {
+        if ($candidate !== $dbFile && fbSqliteHasTable($candidate, 'be_users')) {
+            fbLog('repointing settings at populated database ' . $candidate);
+            fbPointSettingsAtDb($settingsFile, $candidate);
+            $dbFile = $candidate;
+            break;
+        }
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Step 1: installation (settings.php + database schema)
@@ -111,6 +168,9 @@ if (!fbIsInstalled($settingsFile, $dbFile)) {
         escapeshellarg($adminEmail)
     );
     fbRun($setupCommand);
+    // Setup writes the hashed sqlite file name into settings.php.
+    $dbFile = fbResolveDbFile($appDir, $settingsFile, $dbFile);
+    fbLog('database path after setup: ' . $dbFile);
 }
 
 if (!fbIsInstalled($settingsFile, $dbFile) && fbConfiguredDriver($settingsFile) !== 'pdo_sqlite') {
