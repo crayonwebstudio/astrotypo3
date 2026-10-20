@@ -24,18 +24,10 @@
       },
       "type": "path",
       "url": "../../packages/typo3-extension"
-    },
-    {
-      "options": {
-        "symlink": false
-      },
-      "type": "path",
-      "url": "packages/astrotypo3-site"
     }
   ],
   "require": {
     "crayonwebstudio/astro-builder": "dev-main",
-    "crayonwebstudio/astrotypo3-site": "dev-main",
     "php": "^8.2",
     "typo3/cms-about": "^13.4",
     "typo3/cms-backend": "^13.4",
