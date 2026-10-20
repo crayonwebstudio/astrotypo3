@@ -1,0 +1,14 @@
+# TYPO3 frontend rewrites (condensed standard rules for Apache mod_rewrite).
+RewriteEngine On
+
+# Backend entry: /typo3 and /typo3/ are served by typo3/index.php as-is.
+RewriteRule ^typo3$ typo3/ [R=301,L]
+
+# Existing files, directories and symlinks are served directly.
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d [OR]
+RewriteCond %{REQUEST_FILENAME} -l
+RewriteRule .* - [L]
+
+# Everything else goes to the frontend controller.
+RewriteRule .* index.php [L]
