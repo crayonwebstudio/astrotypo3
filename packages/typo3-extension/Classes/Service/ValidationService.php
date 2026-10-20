@@ -7,8 +7,10 @@ use Crayonwebstudio\AstroBuilder\Domain\Model\Page;
 
 final class ValidationService
 {
-    public function __construct(private readonly ComponentRegistryService $registryService)
-    {
+    public function __construct(
+        private readonly ComponentRegistryService $registryService,
+        private readonly ?ElementTypeRegistryService $elementTypeRegistry = null,
+    ) {
     }
 
     /** @return list<string> */
@@ -37,6 +39,20 @@ final class ValidationService
     {
         $errors = [];
         $definition = $this->registryService->getComponent($element->componentId);
+        if ($definition === null && $this->elementTypeRegistry !== null) {
+            // Custom element types created through the API validate against
+            // their declared field list, shaped like a registry props schema.
+            $customType = $this->elementTypeRegistry->findType($element->componentId);
+            if ($customType !== null && ($customType['source'] ?? '') === 'custom') {
+                $props = [];
+                foreach (($customType['fields'] ?? []) as $field) {
+                    if (is_array($field) && isset($field['name'])) {
+                        $props[(string)$field['name']] = ['type' => (string)($field['type'] ?? 'string')];
+                    }
+                }
+                $definition = ['props' => $props, 'childrenAllowed' => []];
+            }
+        }
         if ($definition === null) {
             return [$path . ': unknown componentId ' . $element->componentId];
         }
@@ -56,7 +72,9 @@ final class ValidationService
                 $type = (string)($spec['type'] ?? 'string');
                 if ($type === 'enum') {
                     $values = $spec['values'] ?? [];
-                    if (!is_array($values) || !in_array($value, $values, true)) {
+                    // Custom element types declare enum fields without a
+                    // value list; only registry enums are checked strictly.
+                    if (is_array($values) && $values !== [] && !in_array($value, $values, true)) {
                         $errors[] = $path . '.props.' . $key . ': invalid enum value';
                     }
                 } elseif (!$this->typeMatches($value, $type)) {
@@ -84,7 +102,7 @@ final class ValidationService
     private function typeMatches(mixed $value, string $type): bool
     {
         return match ($type) {
-            'string' => is_string($value),
+            'string', 'text', 'link', 'image' => is_string($value),
             'number' => is_int($value) || is_float($value),
             'boolean' => is_bool($value),
             'array' => is_array($value),
