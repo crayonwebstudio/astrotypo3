@@ -1,0 +1,31 @@
+{
+  "id": "page-draft-home",
+  "slug": "home",
+  "title": "Home (draft)",
+  "status": "draft",
+  "locale": "en",
+  "seo": {
+    "title": "Draft Home: AstroTYPO3",
+    "description": "Draft version used to demonstrate protected preview.",
+    "canonical": ""
+  },
+  "elements": [
+    {
+      "id": "el-draft-hero",
+      "componentId": "section.hero",
+      "props": {
+        "heading": "Draft hero: this is not public",
+        "subheading": "You are seeing this because you supplied a valid preview token.",
+        "ctaLabel": "Back to public home",
+        "ctaHref": "/"
+      }
+    },
+    {
+      "id": "el-draft-text",
+      "componentId": "content.rich-text",
+      "props": {
+        "html": "<p>Draft only paragraph. Public routes never return this page.</p>"
+      }
+    }
+  ]
+}
