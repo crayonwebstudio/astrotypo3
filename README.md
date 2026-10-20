@@ -3,7 +3,7 @@
 Two packages that work as one product:
 
 1. TYPO3 extension in `packages/typo3-extension/` (key: `astro_builder`). TYPO3 manages pages, structured content, permissions, revisions, the content API, preview tokens, AI orchestration and publishing.
-2. Astro frontend in `apps/astro-frontend/`. Astro renders the public site, the protected draft preview, the visual builder demo, the template browser and the audit page.
+2. Astro frontend in `apps/astro-frontend/`. Astro renders the public site, the protected draft preview, the GrapesJS visual builder (external to TYPO3, API only, see `docs/adr/0005-grapesjs-builder.md`), the template browser and the audit page.
 
 They are separate applications. Astro does not run inside PHP. A versioned shared contract in `packages/shared-contract/` connects them: component registry, templates, JSON schemas and a validator implemented in both TypeScript/JavaScript and PHP.
 
