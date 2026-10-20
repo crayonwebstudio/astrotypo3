@@ -1,0 +1,457 @@
+{
+  "contractVersion": "1.0.0",
+  "components": [
+    {
+      "id": "layout.container",
+      "version": "1.0.0",
+      "category": "layout",
+      "label": "Container",
+      "description": "Centered width constrained wrapper for content.",
+      "props": {
+        "maxWidth": {
+          "type": "enum",
+          "default": "lg",
+          "values": [
+            "sm",
+            "md",
+            "lg",
+            "xl",
+            "full"
+          ]
+        },
+        "padding": {
+          "type": "enum",
+          "default": "md",
+          "values": [
+            "none",
+            "sm",
+            "md",
+            "lg"
+          ]
+        },
+        "background": {
+          "type": "string",
+          "default": "transparent"
+        }
+      },
+      "childrenAllowed": [
+        "content.heading",
+        "content.rich-text",
+        "content.image",
+        "content.button",
+        "content.divider",
+        "layout.columns",
+        "section.hero",
+        "section.feature-grid",
+        "section.image-text",
+        "section.testimonials",
+        "section.faq",
+        "section.cta"
+      ],
+      "accessibility": "Use a semantic section or div. Do not nest landmarks incorrectly.",
+      "aiGuidance": "Use as a generic wrapper. Prefer section components for common patterns."
+    },
+    {
+      "id": "layout.columns",
+      "version": "1.0.0",
+      "category": "layout",
+      "label": "Columns",
+      "description": "Responsive multi column layout using CSS grid.",
+      "props": {
+        "columns": {
+          "type": "number",
+          "default": 2
+        },
+        "gap": {
+          "type": "enum",
+          "default": "md",
+          "values": [
+            "sm",
+            "md",
+            "lg"
+          ]
+        }
+      },
+      "childrenAllowed": [
+        "content.heading",
+        "content.rich-text",
+        "content.image",
+        "content.button"
+      ],
+      "accessibility": "Columns collapse to one column on mobile. Reading order follows DOM order.",
+      "aiGuidance": "Use 2 to 4 columns. Keep column content balanced."
+    },
+    {
+      "id": "content.heading",
+      "version": "1.0.0",
+      "category": "content",
+      "label": "Heading",
+      "description": "Semantic heading with configurable level.",
+      "props": {
+        "text": {
+          "type": "string",
+          "default": "New heading",
+          "required": true
+        },
+        "level": {
+          "type": "number",
+          "default": 2
+        },
+        "align": {
+          "type": "enum",
+          "default": "left",
+          "values": [
+            "left",
+            "center",
+            "right"
+          ]
+        }
+      },
+      "accessibility": "Use one h1 per page. Do not skip heading levels.",
+      "aiGuidance": "Keep headings short and descriptive."
+    },
+    {
+      "id": "content.rich-text",
+      "version": "1.0.0",
+      "category": "content",
+      "label": "Rich Text",
+      "description": "Sanitized rich text paragraph content.",
+      "props": {
+        "html": {
+          "type": "string",
+          "default": "<p>Write something helpful.</p>",
+          "required": true
+        },
+        "align": {
+          "type": "enum",
+          "default": "left",
+          "values": [
+            "left",
+            "center"
+          ]
+        }
+      },
+      "accessibility": "Use real paragraphs and lists. Avoid text in images.",
+      "aiGuidance": "Write plain, scannable copy. Only allowlisted HTML tags are rendered."
+    },
+    {
+      "id": "content.image",
+      "version": "1.0.0",
+      "category": "content",
+      "label": "Image",
+      "description": "Responsive image with required alt text support.",
+      "props": {
+        "src": {
+          "type": "string",
+          "default": "https://placehold.co/1200x800",
+          "required": true
+        },
+        "alt": {
+          "type": "string",
+          "default": "",
+          "required": true
+        },
+        "caption": {
+          "type": "string",
+          "default": ""
+        },
+        "width": {
+          "type": "number",
+          "default": 1200
+        },
+        "height": {
+          "type": "number",
+          "default": 800
+        }
+      },
+      "accessibility": "Alt text is required. Decorative images use empty alt with a decorative flag in TYPO3.",
+      "aiGuidance": "Always suggest alt text. Never invent a real photo URL."
+    },
+    {
+      "id": "content.button",
+      "version": "1.0.0",
+      "category": "content",
+      "label": "Button",
+      "description": "Call to action link styled as a button.",
+      "props": {
+        "label": {
+          "type": "string",
+          "default": "Learn more",
+          "required": true
+        },
+        "href": {
+          "type": "string",
+          "default": "/",
+          "required": true
+        },
+        "variant": {
+          "type": "enum",
+          "default": "primary",
+          "values": [
+            "primary",
+            "secondary",
+            "ghost"
+          ]
+        }
+      },
+      "accessibility": "Label must describe the destination. Minimum touch target 44px.",
+      "aiGuidance": "Use one primary button per section."
+    },
+    {
+      "id": "content.divider",
+      "version": "1.0.0",
+      "category": "content",
+      "label": "Divider",
+      "description": "Visual separator between content blocks.",
+      "props": {
+        "style": {
+          "type": "enum",
+          "default": "line",
+          "values": [
+            "line",
+            "space",
+            "dots"
+          ]
+        }
+      },
+      "accessibility": "Decorative, hidden from assistive technology.",
+      "aiGuidance": "Use sparingly to separate major sections."
+    },
+    {
+      "id": "section.hero",
+      "version": "1.0.0",
+      "category": "section",
+      "label": "Hero",
+      "description": "Large introductory section with heading, text and call to action.",
+      "props": {
+        "heading": {
+          "type": "string",
+          "default": "Build better websites",
+          "required": true
+        },
+        "subheading": {
+          "type": "string",
+          "default": "A visual builder powered by TYPO3 and Astro."
+        },
+        "ctaLabel": {
+          "type": "string",
+          "default": "Get started"
+        },
+        "ctaHref": {
+          "type": "string",
+          "default": "/builder"
+        },
+        "imageSrc": {
+          "type": "string",
+          "default": ""
+        },
+        "imageAlt": {
+          "type": "string",
+          "default": ""
+        }
+      },
+      "accessibility": "Hero heading is usually the page h1. Image needs alt text when present.",
+      "aiGuidance": "One hero per page, at the top. Keep heading under 12 words."
+    },
+    {
+      "id": "section.feature-grid",
+      "version": "1.0.0",
+      "category": "section",
+      "label": "Feature Grid",
+      "description": "Grid of features with title and text items.",
+      "props": {
+        "heading": {
+          "type": "string",
+          "default": "Features"
+        },
+        "items": {
+          "type": "array",
+          "default": [
+            {
+              "title": "Fast",
+              "text": "Rendered by Astro."
+            },
+            {
+              "title": "Structured",
+              "text": "Managed in TYPO3."
+            },
+            {
+              "title": "AI assisted",
+              "text": "Validated change plans."
+            }
+          ]
+        }
+      },
+      "accessibility": "Use a list structure for features.",
+      "aiGuidance": "Use 3 or 6 items for a balanced grid."
+    },
+    {
+      "id": "section.image-text",
+      "version": "1.0.0",
+      "category": "section",
+      "label": "Image and Text",
+      "description": "Image beside text with optional reversed order.",
+      "props": {
+        "heading": {
+          "type": "string",
+          "default": "About this section",
+          "required": true
+        },
+        "text": {
+          "type": "string",
+          "default": "Supporting copy goes here."
+        },
+        "imageSrc": {
+          "type": "string",
+          "default": "https://placehold.co/900x700",
+          "required": true
+        },
+        "imageAlt": {
+          "type": "string",
+          "default": "Illustrative image",
+          "required": true
+        },
+        "reversed": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "accessibility": "Image alt required. Text order follows DOM order.",
+      "aiGuidance": "Use for about and product explanation sections."
+    },
+    {
+      "id": "section.testimonials",
+      "version": "1.0.0",
+      "category": "section",
+      "label": "Testimonials",
+      "description": "Quotes from customers or users.",
+      "props": {
+        "heading": {
+          "type": "string",
+          "default": "What people say"
+        },
+        "items": {
+          "type": "array",
+          "default": [
+            {
+              "quote": "This builder saved us weeks.",
+              "name": "Sample Person",
+              "role": "Editor"
+            }
+          ]
+        }
+      },
+      "accessibility": "Use blockquote and cite semantics.",
+      "aiGuidance": "Never fabricate real person quotes for production. Sample data is labelled sample."
+    },
+    {
+      "id": "section.faq",
+      "version": "1.0.0",
+      "category": "section",
+      "label": "FAQ",
+      "description": "Frequently asked questions using native details elements.",
+      "props": {
+        "heading": {
+          "type": "string",
+          "default": "Frequently asked questions"
+        },
+        "items": {
+          "type": "array",
+          "default": [
+            {
+              "question": "How does it work?",
+              "answer": "TYPO3 manages content and Astro renders it."
+            }
+          ]
+        }
+      },
+      "accessibility": "Native details and summary are keyboard accessible by default.",
+      "aiGuidance": "Keep answers short and factual."
+    },
+    {
+      "id": "section.cta",
+      "version": "1.0.0",
+      "category": "section",
+      "label": "Call to Action",
+      "description": "Closing section prompting the next step.",
+      "props": {
+        "heading": {
+          "type": "string",
+          "default": "Ready to start?",
+          "required": true
+        },
+        "text": {
+          "type": "string",
+          "default": "Try the visual builder demo."
+        },
+        "ctaLabel": {
+          "type": "string",
+          "default": "Open the builder"
+        },
+        "ctaHref": {
+          "type": "string",
+          "default": "/builder"
+        }
+      },
+      "accessibility": "Heading level should follow page outline.",
+      "aiGuidance": "One clear action per CTA section."
+    },
+    {
+      "id": "navigation.header",
+      "version": "1.0.0",
+      "category": "navigation",
+      "label": "Header",
+      "description": "Site header with brand and navigation links.",
+      "props": {
+        "brand": {
+          "type": "string",
+          "default": "AstroTYPO3",
+          "required": true
+        },
+        "links": {
+          "type": "array",
+          "default": [
+            {
+              "label": "Home",
+              "href": "/"
+            },
+            {
+              "label": "Builder",
+              "href": "/builder"
+            },
+            {
+              "label": "Templates",
+              "href": "/templates"
+            }
+          ]
+        }
+      },
+      "accessibility": "Use a nav landmark with an aria label. Provide a skip link in the layout.",
+      "aiGuidance": "Keep navigation to 7 items or fewer."
+    },
+    {
+      "id": "navigation.footer",
+      "version": "1.0.0",
+      "category": "navigation",
+      "label": "Footer",
+      "description": "Site footer with links and copyright text.",
+      "props": {
+        "text": {
+          "type": "string",
+          "default": "Built with TYPO3 and Astro."
+        },
+        "links": {
+          "type": "array",
+          "default": [
+            {
+              "label": "Home",
+              "href": "/"
+            }
+          ]
+        }
+      },
+      "accessibility": "Use a contentinfo landmark via the footer element.",
+      "aiGuidance": "Keep footer links to key pages only."
+    }
+  ]
+}
