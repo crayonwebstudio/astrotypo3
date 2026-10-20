@@ -1,0 +1,12 @@
+rootPageId: 1
+base: 'https://typo3.woodwolfdigital.com/'
+websiteTitle: AstroTYPO3
+languages:
+  - title: English
+    enabled: true
+    languageId: 0
+    base: /
+    locale: en_US.UTF-8
+    navigationTitle: English
+routes: []
+errorHandling: []
