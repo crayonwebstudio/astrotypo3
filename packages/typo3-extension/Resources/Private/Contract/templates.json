@@ -1,0 +1,366 @@
+{
+  "contractVersion": "1.0.0",
+  "elementPresets": [
+    {
+      "id": "preset.primary-button",
+      "version": "1.0.0",
+      "label": "Primary button",
+      "category": "preset",
+      "element": {
+        "id": "el-content-button",
+        "componentId": "content.button",
+        "props": {
+          "label": "Get started",
+          "href": "/builder",
+          "variant": "primary"
+        }
+      }
+    },
+    {
+      "id": "preset.secondary-button",
+      "version": "1.0.0",
+      "label": "Secondary button",
+      "category": "preset",
+      "element": {
+        "id": "el-content-button",
+        "componentId": "content.button",
+        "props": {
+          "label": "Read the docs",
+          "href": "/templates",
+          "variant": "secondary"
+        }
+      }
+    },
+    {
+      "id": "preset.centered-heading",
+      "version": "1.0.0",
+      "label": "Centered heading",
+      "category": "preset",
+      "element": {
+        "id": "el-content-heading",
+        "componentId": "content.heading",
+        "props": {
+          "text": "A clear heading",
+          "level": 2,
+          "align": "center"
+        }
+      }
+    },
+    {
+      "id": "preset.lead-paragraph",
+      "version": "1.0.0",
+      "label": "Lead paragraph",
+      "category": "preset",
+      "element": {
+        "id": "el-content-rich-text",
+        "componentId": "content.rich-text",
+        "props": {
+          "html": "<p>A short lead paragraph that explains the value in one sentence.</p>"
+        }
+      }
+    }
+  ],
+  "sectionTemplates": [
+    {
+      "id": "section-template.hero-cta",
+      "version": "1.0.0",
+      "label": "Hero with CTA",
+      "category": "hero",
+      "elements": [
+        {
+          "id": "el-section-hero",
+          "componentId": "section.hero",
+          "props": {
+            "heading": "Launch your next site visually",
+            "subheading": "TYPO3 manages the content. Astro renders it fast.",
+            "ctaLabel": "Open the builder",
+            "ctaHref": "/builder"
+          }
+        }
+      ]
+    },
+    {
+      "id": "section-template.features",
+      "version": "1.0.0",
+      "label": "Three features",
+      "category": "features",
+      "elements": [
+        {
+          "id": "el-section-feature-grid",
+          "componentId": "section.feature-grid",
+          "props": {
+            "heading": "Why this stack",
+            "items": [
+              {
+                "title": "Structured",
+                "text": "Schema validated content."
+              },
+              {
+                "title": "Fast",
+                "text": "Astro server rendering."
+              },
+              {
+                "title": "Safe AI",
+                "text": "Allowlisted change plans."
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "section-template.testimonials",
+      "version": "1.0.0",
+      "label": "Testimonials",
+      "category": "social-proof",
+      "elements": [
+        {
+          "id": "el-section-testimonials",
+          "componentId": "section.testimonials",
+          "props": {
+            "heading": "Sample feedback",
+            "items": [
+              {
+                "quote": "Sample quote for template preview only.",
+                "name": "Sample Person",
+                "role": "Editor"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "section-template.faq-cta",
+      "version": "1.0.0",
+      "label": "FAQ plus CTA",
+      "category": "faq",
+      "elements": [
+        {
+          "id": "el-section-faq",
+          "componentId": "section.faq",
+          "props": {
+            "heading": "Questions",
+            "items": [
+              {
+                "question": "Is the AI real in the demo?",
+                "answer": "No. The demo uses a clearly labelled mock provider."
+              }
+            ]
+          }
+        },
+        {
+          "id": "el-section-cta",
+          "componentId": "section.cta",
+          "props": {
+            "heading": "Try it now",
+            "text": "Open the builder demo.",
+            "ctaLabel": "Open builder",
+            "ctaHref": "/builder"
+          }
+        }
+      ]
+    }
+  ],
+  "pageTemplates": [
+    {
+      "id": "page.home",
+      "version": "1.0.0",
+      "label": "Home",
+      "slug": "home",
+      "title": "Home",
+      "elements": [
+        {
+          "id": "el-navigation-header",
+          "componentId": "navigation.header",
+          "props": {
+            "brand": "AstroTYPO3"
+          }
+        },
+        {
+          "id": "el-section-hero",
+          "componentId": "section.hero",
+          "props": {
+            "heading": "Build websites visually with TYPO3 and Astro",
+            "subheading": "Structured content, fast rendering, and validated AI assistance.",
+            "ctaLabel": "Open the builder",
+            "ctaHref": "/builder"
+          }
+        },
+        {
+          "id": "el-section-feature-grid",
+          "componentId": "section.feature-grid",
+          "props": {
+            "heading": "Core capabilities"
+          }
+        },
+        {
+          "id": "el-section-faq",
+          "componentId": "section.faq",
+          "props": {
+            "heading": "Frequently asked questions"
+          }
+        },
+        {
+          "id": "el-section-cta",
+          "componentId": "section.cta",
+          "props": {
+            "heading": "Start building",
+            "text": "Try the demo builder.",
+            "ctaLabel": "Open builder",
+            "ctaHref": "/builder"
+          }
+        },
+        {
+          "id": "el-navigation-footer",
+          "componentId": "navigation.footer",
+          "props": {}
+        }
+      ]
+    },
+    {
+      "id": "page.about",
+      "version": "1.0.0",
+      "label": "About",
+      "slug": "about",
+      "title": "About",
+      "elements": [
+        {
+          "id": "el-content-heading",
+          "componentId": "content.heading",
+          "props": {
+            "text": "About us",
+            "level": 1
+          }
+        },
+        {
+          "id": "el-section-image-text",
+          "componentId": "section.image-text",
+          "props": {
+            "heading": "Our approach",
+            "text": "We combine a mature CMS with a modern frontend.",
+            "imageSrc": "https://placehold.co/900x700",
+            "imageAlt": "Team working"
+          }
+        }
+      ]
+    },
+    {
+      "id": "page.services",
+      "version": "1.0.0",
+      "label": "Services",
+      "slug": "services",
+      "title": "Services",
+      "elements": [
+        {
+          "id": "el-content-heading",
+          "componentId": "content.heading",
+          "props": {
+            "text": "Services",
+            "level": 1
+          }
+        },
+        {
+          "id": "el-section-feature-grid",
+          "componentId": "section.feature-grid",
+          "props": {
+            "heading": "What we do"
+          }
+        }
+      ]
+    },
+    {
+      "id": "page.contact",
+      "version": "1.0.0",
+      "label": "Contact",
+      "slug": "contact",
+      "title": "Contact",
+      "elements": [
+        {
+          "id": "el-content-heading",
+          "componentId": "content.heading",
+          "props": {
+            "text": "Contact",
+            "level": 1
+          }
+        },
+        {
+          "id": "el-content-rich-text",
+          "componentId": "content.rich-text",
+          "props": {
+            "html": "<p>Use the contact form on the live site to reach the team.</p>"
+          }
+        },
+        {
+          "id": "el-content-button",
+          "componentId": "content.button",
+          "props": {
+            "label": "Open builder demo",
+            "href": "/builder",
+            "variant": "primary"
+          }
+        }
+      ]
+    },
+    {
+      "id": "page.landing",
+      "version": "1.0.0",
+      "label": "Landing page",
+      "slug": "landing",
+      "title": "Landing",
+      "elements": [
+        {
+          "id": "el-section-hero",
+          "componentId": "section.hero",
+          "props": {
+            "heading": "A focused landing page",
+            "subheading": "One message, one action.",
+            "ctaLabel": "Get started",
+            "ctaHref": "/builder"
+          }
+        },
+        {
+          "id": "el-section-testimonials",
+          "componentId": "section.testimonials",
+          "props": {
+            "heading": "Sample feedback"
+          }
+        },
+        {
+          "id": "el-section-cta",
+          "componentId": "section.cta",
+          "props": {
+            "heading": "Ready?",
+            "text": "Start now.",
+            "ctaLabel": "Start",
+            "ctaHref": "/builder"
+          }
+        }
+      ]
+    }
+  ],
+  "siteTemplates": [
+    {
+      "id": "site.agency-starter",
+      "version": "1.0.0",
+      "label": "Agency starter",
+      "category": "site",
+      "tokens": {
+        "colorPrimary": "#0f3b2e",
+        "colorAccent": "#ff795b",
+        "colorBackground": "#faf8f5",
+        "colorText": "#242424",
+        "fontHeading": "system-ui, sans-serif",
+        "fontBody": "system-ui, sans-serif",
+        "radius": "12px",
+        "containerWidth": "1120px"
+      },
+      "pages": [
+        "page.home",
+        "page.about",
+        "page.services",
+        "page.contact"
+      ]
+    }
+  ]
+}
