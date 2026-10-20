@@ -216,3 +216,31 @@ Re-run results after the fix:
 | `POST /api/v1/element-types` (`custom.integration-check`) with token | 201, ctype `astro_builder_custom_integration_check` |
 | `POST /api/v1/element-types` duplicate / without token | 422 / 401 |
 | `GET /api/v1/element-types` | 200, 17 types (15 core + 2 custom) |
+
+## 6. Live element-types proof and CORS (20 October 2026, polish pass)
+
+Run against the deployed instance at https://typo3.woodwolfdigital.com after the redeployment that carried the CORS middleware change and the committed `apps/typo3-cms/composer.lock` (Coolify deployment `uoipzrrpvgwbqocyxhkysnlq`, finished; the image build runs `composer install` now that a lock file exists). A short lived token for the `element-types` scope was minted from the live preview secret with the exact PreviewTokenService HMAC scheme; the token and the secret were never printed or stored anywhere.
+
+Element types, live:
+
+| Check | Result |
+|---|---|
+| `GET /api/v1/element-types` before | 200, 15 types (core only) |
+| `POST /api/v1/element-types` without token | 401 |
+| `POST /api/v1/element-types` with token, `custom.live-check` (label "Live Check", one string field) | 201, type `custom.live-check`, ctype `astro_builder_custom_live_check` |
+| `GET /api/v1/element-types` after | 200, 16 types: the 15 core types plus `custom.live-check` |
+| `POST /api/v1/element-types` duplicate with token | 422 `validation_failed` |
+
+The `custom.live-check` type stays registered on the live instance as a legitimate registry entry created through the public API; it is the standing proof that human driven element type creation works live. A custom CType becomes selectable in the TYPO3 backend only after a cache flush, as documented in section 3 of this file; the API and the builder use it immediately.
+
+CORS, live (the builder on https://astrotypo3.woodwolfdigital.com calls this API cross-origin):
+
+| Check | Result |
+|---|---|
+| `OPTIONS /api/v1/element-types` with `Origin: https://astrotypo3.woodwolfdigital.com` and preflight headers for `content-type, x-preview-token` | 204, `Access-Control-Allow-Origin: https://astrotypo3.woodwolfdigital.com`, allow methods `GET, POST, OPTIONS`, allow headers `Content-Type, X-Preview-Token, Authorization`, max age 600 |
+| `GET /api/v1/element-types` with the Astro origin | 200 with the same `Access-Control-Allow-Origin` |
+| `GET /api/v1/element-types` with a non-allowlisted origin | 200, no `Access-Control-Allow-Origin` header |
+| `GET /api/content/v1/draft/home` without token | 401 (unchanged) |
+| `GET /typo3/`, `GET /api/content/v1/registry`, `GET /api/content/v1/pages/home` after the redeploy | 200, 200, 200 |
+
+Builder wiring, live: the Astro redeployment `jv3wgv5qygf5kc5oanzz2hal` (finished) serves `/builder` with `window.__ASTRO_BUILDER_CONFIG__ = {"apiBase":"https://typo3.woodwolfdigital.com"}` rendered from the `TYPO3_CONTENT_API_URL` environment variable, so the deployed builder loads pages and element types from the live TYPO3 and writes go to the TYPO3 endpoints with the editor supplied preview token.
