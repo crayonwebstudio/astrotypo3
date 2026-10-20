@@ -51,14 +51,24 @@ final class ComponentRegistryService
 
     private function resolvePath(string $file): string
     {
-        $configured = trim($this->sharedContractPath);
-        if ($configured !== '') {
-            return rtrim($configured, '/') . '/' . $file;
-        }
-        $fromEnv = (string)(getenv('ASTRO_BUILDER_SHARED_CONTRACT_PATH') ?: '');
+        // The environment variable wins so a site can point the extension at
+        // its own copy of the shared contract. Without it, the path configured
+        // in Services.yaml is used: the contract copy bundled with the
+        // extension under Resources/Private/Contract.
+        $fromEnv = trim((string)(getenv('ASTRO_BUILDER_SHARED_CONTRACT_PATH') ?: ''));
         if ($fromEnv !== '') {
             return rtrim($fromEnv, '/') . '/' . $file;
         }
-        return '';
+        $configured = trim($this->sharedContractPath);
+        if ($configured === '') {
+            return '';
+        }
+        if (str_starts_with($configured, '/')) {
+            return rtrim($configured, '/') . '/' . $file;
+        }
+        // Relative paths are resolved against the extension root, which is
+        // two levels up from Classes/Service.
+        $extensionRoot = dirname(__DIR__, 2);
+        return $extensionRoot . '/' . trim($configured, '/') . '/' . $file;
     }
 }
