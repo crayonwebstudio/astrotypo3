@@ -1,0 +1,7 @@
+---
+import { sanitizeHtml } from '../lib/sanitize.mjs';
+const { element, preview = false } = Astro.props;
+const p = element?.props ?? {};
+const attrs = preview ? { 'data-astro-builder-id': element.id, class: 'preview-editable' } : {};
+---
+<div {...attrs} style={`text-align: ${p.align ?? 'left'}`} set:html={sanitizeHtml(p.html ?? '')} />
