@@ -228,25 +228,39 @@ nothing twice, reported the four `tx_astrobuilder_*` tables, and
    over the PHP built-in server. On this deployment Apache still
    answers 404 for `%2F` before PHP runs, despite
    `AllowEncodedSlashes NoDecode` in the server configuration, and
-   Traefik in front may normalize the path as well. Double slash paths
-   are merged by Apache, so no transport for slash leading slugs
-   currently reaches the extension here.
-2. Page lookup semantics: the extension's page endpoint returned its
-   JSON 404 for the seeded pages under every slug form that reached it
-   (`about`, `home`, merged `/about`). The seeded TYPO3 slugs are `/`
-   and `/about`. Reconciling the slug convention between the TYPO3 page
-   tree, the extension lookup and the Astro client is extension and
-   contract work, tracked with the API follow-up, not deployment work.
-3. Astro is deliberately NOT wired to this TYPO3 instance yet. The
-   Astro content client fetches `{TYPO3_CONTENT_API_URL}/pages/{slug}`
-   with slugs `home` and `about` (`apps/astro-frontend/src/lib/
-   content.mjs`); until limitation 2 is resolved, TYPO3 answers 404
-   for those, and pointing the live Astro site at it would add risk
-   without returning content. Remaining wiring step, once the page
-   endpoint serves the seeded pages: set `TYPO3_CONTENT_API_URL` to
+   Traefik in front may normalize the path as well. This is no longer
+   a blocker: the slug convention below makes the encoded form
+   unnecessary, because clients send the trimmed slug.
+2. Page lookup semantics: RESOLVED in the final integration pass
+   (20 Oct 2026). The extension now normalizes slugs in one place
+   (`PageContentService::normalizeSlug`): the canonical client form is
+   `pages/{slug}` with the slug trimmed of slashes, `home` and an
+   empty slug mean the root page, and any other value resolves as `/`
+   plus the trimmed value against the `pages.slug` column. The fix is
+   applied at every slug resolution site (published reads, draft reads
+   and token verification, builder save) and is documented in
+   `docs/CONTENT_API.md` and `docs/TYPO3_API_VERIFICATION.md` section 4.
+   This app was redeployed with the fix (deployment
+   `d9deartqcvdr06n2n6xzk77h`, finished); live afterwards:
+   `pages/home` 200, `pages/about` 200, unknown page 404 JSON, draft
+   without token 401, registry and templates 200, `/typo3/` 200.
+3. Astro wiring: DONE in the final integration pass (20 Oct 2026).
+   Before wiring, the live instance was seeded with the real content
+   through the builder save API (token minted from the production
+   preview secret): the home page now holds the 8 fixture elements and
+   the about page the 2 fixture elements as `tt_content` records,
+   verified by read back with identical component sequences.
+   `TYPO3_CONTENT_API_URL` is set to
    `https://typo3.woodwolfdigital.com/api/content/v1` on the Astro
-   application (`lbjuhudf3sqn1mrq6qr6u6ji`), redeploy it, and re-verify
-   the Astro homepage renders TYPO3 content.
+   application (`lbjuhudf3sqn1mrq6qr6u6ji`), which was redeployed
+   (deployments `iv8muichwyo3dlsl2ts15zfh` and `88xkjn5d9d5plodbozezjnhf`,
+   finished). Live verification: `/`, `/about`, `/builder`,
+   `/templates`, `/audit`, `/sitemap.xml` and `/robots.txt` all 200,
+   unknown slug 404, and the homepage and about page render the TYPO3
+   content (the hero heading and the about sections match the TYPO3
+   API responses exactly; page titles come from the TYPO3 page
+   records). The Astro demo API routes are unchanged and still answer
+   for the builder demo mode. Full audit: `docs/GAP_AUDIT.md`.
 4. No `composer.lock` is committed, so image builds re-resolve TYPO3
    patch versions. Generate and commit a lock file from a machine with
    PHP 8.3 and Composer before calling this reproducible.
