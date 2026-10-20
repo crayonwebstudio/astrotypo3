@@ -5,6 +5,7 @@ namespace Crayonwebstudio\AstroBuilder\Middleware;
 use Crayonwebstudio\AstroBuilder\Controller\BuilderApiController;
 use Crayonwebstudio\AstroBuilder\Controller\ContentApiController;
 use Crayonwebstudio\AstroBuilder\Controller\ElementTypeApiController;
+use Crayonwebstudio\AstroBuilder\Service\PageContentService;
 use Crayonwebstudio\AstroBuilder\Service\PreviewTokenService;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -23,7 +24,11 @@ use TYPO3\CMS\Core\Http\JsonResponse;
  * through untouched.
  *
  *   GET  /api/content/v1/pages/{slug}     published page (slug may contain
- *                                         slashes, remainder of the path)
+ *                                         slashes, remainder of the path;
+ *                                         canonical client form is the slug
+ *                                         trimmed of slashes, "home" or an
+ *                                         empty slug means the root page,
+ *                                         see PageContentService::normalizeSlug)
  *   GET  /api/content/v1/draft/{slug}     draft page, preview token checked
  *                                         by PreviewAuthMiddleware and again
  *                                         by the controller
@@ -52,11 +57,13 @@ final class ApiMiddleware implements MiddlewareInterface
         $path = $request->getUri()->getPath();
         $method = strtoupper($request->getMethod());
 
-        if (str_starts_with($path, '/api/content/v1/pages/')) {
+        if ($path === '/api/content/v1/pages' || str_starts_with($path, '/api/content/v1/pages/')) {
             if ($method !== 'GET') {
                 return $this->methodNotAllowed();
             }
-            $slug = $this->slugAfterPrefix($path, '/api/content/v1/pages/');
+            // An empty remainder is the root page; PageContentService
+            // normalizes "" (and "home") to the stored root slug "/".
+            $slug = $path === '/api/content/v1/pages' ? '' : $this->slugAfterPrefix($path, '/api/content/v1/pages/');
             return $this->contentController->pageAction($request, $slug);
         }
         if (str_starts_with($path, '/api/content/v1/draft/')) {
@@ -103,8 +110,11 @@ final class ApiMiddleware implements MiddlewareInterface
     {
         $body = json_decode((string)$request->getBody(), true);
         $slug = is_array($body) && is_array($body['page'] ?? null) ? (string)($body['page']['slug'] ?? '') : '';
+        // The root page may arrive as "home" or "/" (or ""); the token is
+        // verified against the canonical slug, same as the draft endpoint.
+        // An empty slug stays rejected here: a save must name its page.
         $token = $request->getHeaderLine('x-preview-token');
-        if ($slug === '' || $token === '' || !$this->previewTokenService->verifyToken($token, $slug)) {
+        if ($slug === '' || $token === '' || !$this->previewTokenService->verifyToken($token, PageContentService::normalizeSlug($slug))) {
             return new JsonResponse(['error' => ['code' => 'unauthorized', 'message' => 'A valid preview token for the page slug is required to save.']], 401);
         }
         // The body stream was consumed above; hand the controller a request
