@@ -5,8 +5,13 @@ namespace Crayonwebstudio\AstroBuilder\Controller;
 use Crayonwebstudio\AstroBuilder\Ai\AiOrchestrationService;
 use Crayonwebstudio\AstroBuilder\Domain\Model\Element;
 use Crayonwebstudio\AstroBuilder\Domain\Model\Page;
+use Crayonwebstudio\AstroBuilder\Service\ContentElementMapper;
+use Crayonwebstudio\AstroBuilder\Service\PageContentService;
 use Crayonwebstudio\AstroBuilder\Service\PublishService;
 use Crayonwebstudio\AstroBuilder\Service\ValidationService;
+use TYPO3\CMS\Core\Database\Connection;
+use TYPO3\CMS\Core\Database\ConnectionPool;
+use TYPO3\CMS\Core\Utility\GeneralUtility;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use TYPO3\CMS\Core\Http\JsonResponse;
@@ -22,6 +27,8 @@ final class BuilderApiController
         private readonly ValidationService $validationService,
         private readonly AiOrchestrationService $aiService,
         private readonly PublishService $publishService,
+        private readonly ContentElementMapper $elementMapper,
+        private readonly PageContentService $pageContentService,
     ) {
     }
 
@@ -52,10 +59,47 @@ final class BuilderApiController
         if ($errors !== []) {
             return new JsonResponse(['error' => ['code' => 'validation_failed', 'message' => 'The page did not validate.', 'details' => $errors]], 422);
         }
-        // Persistence is done through TYPO3 DataHandler in the site package so
-        // revisions, workspaces and permissions stay native. This controller
-        // returns the validated draft for that step.
-        return new JsonResponse(['status' => 'validated', 'page' => $page->toArray(), 'note' => 'Validated draft. Persist through DataHandler in the site integration.']);
+        $pageUid = $this->resolvePageUid($page);
+        if ($pageUid <= 0) {
+            return new JsonResponse(['error' => ['code' => 'not_found', 'message' => 'The TYPO3 page for this payload was not found.']], 404);
+        }
+        // Persistence goes through DataHandler (ContentElementMapper), so
+        // TCA validation, permissions, workspaces and revisions stay native.
+        // Elements become tt_content core elements of the page; records the
+        // builder previously created and that are missing from this payload
+        // are deleted, records created outside the builder are never touched.
+        try {
+            $this->elementMapper->persistPageElements($pageUid, $elements);
+        } catch (\Throwable $exception) {
+            return new JsonResponse(['error' => ['code' => 'persistence_failed', 'message' => $exception->getMessage()]], 500);
+        }
+        $saved = $this->pageContentService->findDraftBySlug($page->slug);
+        return new JsonResponse([
+            'status' => 'saved',
+            'page' => $saved !== null ? $saved->toArray() : $page->toArray(),
+            'note' => 'Saved as tt_content core elements through DataHandler.',
+        ]);
+    }
+
+    private function resolvePageUid(Page $page): int
+    {
+        if (str_starts_with($page->id, 'page-')) {
+            $uid = (int)substr($page->id, strlen('page-'));
+            if ($uid > 0) {
+                return $uid;
+            }
+        }
+        try {
+            $connectionPool = GeneralUtility::makeInstance(ConnectionPool::class);
+            $queryBuilder = $connectionPool->getQueryBuilderForTable('pages');
+            $row = $queryBuilder->select('uid')->from('pages')
+                ->where($queryBuilder->expr()->eq('slug', $queryBuilder->createNamedParameter($page->slug)))
+                ->andWhere($queryBuilder->expr()->eq('deleted', $queryBuilder->createNamedParameter(0, Connection::PARAM_INT)))
+                ->executeQuery()->fetchAssociative();
+            return is_array($row) ? (int)$row['uid'] : 0;
+        } catch (\Throwable) {
+            return 0;
+        }
     }
 
     public function aiGenerateAction(ServerRequestInterface $request): ResponseInterface
