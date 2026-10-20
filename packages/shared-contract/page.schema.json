@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astrotypo3.example/contracts/v1/page.schema.json",
+  "title": "Page",
+  "type": "object",
+  "required": [
+    "id",
+    "slug",
+    "title",
+    "status",
+    "elements"
+  ],
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "slug": {
+      "type": "string",
+      "pattern": "^[a-z0-9-/]*$"
+    },
+    "title": {
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "published",
+        "draft"
+      ]
+    },
+    "locale": {
+      "type": "string"
+    },
+    "seo": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "canonical": {
+          "type": "string"
+        }
+      }
+    },
+    "elements": {
+      "type": "array",
+      "items": {
+        "$ref": "component-instance"
+      }
+    }
+  }
+}
