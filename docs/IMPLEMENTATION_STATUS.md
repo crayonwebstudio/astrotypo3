@@ -32,3 +32,9 @@ Status key: Complete means implemented and verified locally. Implemented, TYPO3 
 ## Known limitations (summary)
 
 TYPO3 runtime not executed locally. AI is a mock by default. Publishing is a demo adapter until a webhook is configured. Builder save is a demo store. Full detail in `docs/FINAL_REPORT.md`.
+
+## Deployment status (2026-10-20)
+
+- GitHub repo live: crayonwebstudio/astrotypo3, 111 files, missing only .github/workflows/ci.yml (token lacks workflow scope)
+- Coolify deployment finished and live verified at https://astrotypo3.woodwolfdigital.com (all main routes HTTP 200, draft protection and mock AI verified live)
+- TYPO3 runtime still requires a staging TYPO3 install for end to end verification, as documented above
