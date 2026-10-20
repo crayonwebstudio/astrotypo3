@@ -1,0 +1,7 @@
+vendor/
+var/
+public/fileadmin/
+public/uploads/
+config/system/settings.php
+.typo3-setup/
+*.log
