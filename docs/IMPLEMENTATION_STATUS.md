@@ -38,4 +38,6 @@ TYPO3 runtime executed locally on 20 Oct 2026 (TYPO3 13.4.36 test instance, exte
 
 - GitHub repo live: crayonwebstudio/astrotypo3, 111 files, missing only .github/workflows/ci.yml (token lacks workflow scope)
 - Coolify deployment finished and live verified at https://astrotypo3.woodwolfdigital.com (all main routes HTTP 200, draft protection and mock AI verified live)
-- TYPO3 runtime verified end to end on the local TYPO3 13.4.36 instance over HTTP (see `docs/TYPO3_API_VERIFICATION.md`); a deployed TYPO3 staging install is still outstanding
+- TYPO3 runtime verified end to end on the local TYPO3 13.4.36 instance over HTTP (see `docs/TYPO3_API_VERIFICATION.md`)
+- TYPO3 13 deployed on Coolify at https://typo3.woodwolfdigital.com (app `yersmlnb8mvivtuyd04fcqib`, final deployment `mv2cazxd3yplbycxwfkmvanv` finished 20 Oct 2026) and verified live: frontend 200, backend login 200 (bare /typo3 redirects correctly), API registry and templates 200, draft without token 401, persistent volumes for var, config and fileadmin. Full record: `docs/TYPO3_DEPLOYMENT.md`
+- Astro is not wired to the deployed TYPO3 yet, on purpose: the extension page endpoint returns its JSON 404 for the seeded pages under the slug forms that reach it here, and encoded slash slugs are rejected by Apache before PHP. The exact remaining wiring step is documented in `docs/TYPO3_DEPLOYMENT.md` section 8
