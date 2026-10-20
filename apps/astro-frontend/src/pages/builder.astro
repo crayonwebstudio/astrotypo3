@@ -6,7 +6,8 @@ import home from '../data/sample-published.json';
 ---
 <BaseLayout title="Visual builder: AstroTYPO3" description="Demo visual builder for AstroTYPO3.">
   <style>
-    .builder-shell { display: grid; grid-template-columns: 280px 1fr 300px; gap: 1rem; padding: 1rem; align-items: start; }
+    .builder-shell { display: grid; grid-template-columns: 280px minmax(0, 1fr) 340px; gap: 1rem; padding: 1rem; align-items: start; }
+    .builder-shell > * { min-width: 0; box-sizing: border-box; }
     @media (max-width: 1000px) { .builder-shell { grid-template-columns: 1fr; } }
     .panel { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius); padding: 1rem; }
     .lib-item { display: block; width: 100%; text-align: left; margin: 0.35rem 0; padding: 0.6rem; border: 1px solid var(--color-border); border-radius: 8px; background: #fff; cursor: grab; }
@@ -21,6 +22,15 @@ import home from '../data/sample-published.json';
     label { display: block; font-weight: 700; margin-top: 0.7rem; }
     input, select, textarea { width: 100%; padding: 0.45rem; }
     .status { padding: 0.6rem; background: #fff8f0; border: 1px solid var(--color-border); border-radius: 8px; white-space: pre-wrap; }
+  </style>
+  <style is:global>
+    /* Inspector fields are created by client JS, so Astro scoped styles do not reach them. */
+    #inspector label { display: block; font-weight: 700; margin: 0.9rem 0 0.3rem; overflow-wrap: anywhere; }
+    #inspector input, #inspector textarea, #inspector select { display: block; width: 100%; box-sizing: border-box; padding: 0.45rem; margin: 0; }
+    #inspector input[type="checkbox"] { display: inline-block; width: auto; }
+    #inspector p, #inspector h3 { overflow-wrap: anywhere; }
+    .canvas-el .el-tools { gap: 0.45rem; }
+    .canvas-el .el-tools button { margin: 0.15rem 0; }
   </style>
 
   <div style="padding: 1rem 1rem 0;">
