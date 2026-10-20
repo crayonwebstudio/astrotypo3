@@ -1,0 +1,56 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import Renderer from '../../components/Renderer.astro';
+import { getFixtureDraft } from '../../lib/content.mjs';
+import { verifyPreviewToken, isDemoPreviewAllowed } from '../../lib/previewToken.mjs';
+const slug = Astro.params.slug ?? 'home';
+const token = Astro.url.searchParams.get('token') ?? '';
+const secret = process.env.TYPO3_PREVIEW_SECRET ?? '';
+const valid = secret ? verifyPreviewToken(token, slug, secret) : isDemoPreviewAllowed(token, false);
+const page: any = valid ? getFixtureDraft(slug) : null;
+if (!valid) Astro.response.status = 401;
+---
+<BaseLayout title={page?.seo?.title ?? 'Preview access denied'} description="" draft={valid}>
+  {valid && page ? (
+    <div>
+      <div class="container" style="padding: 1rem 1.25rem;">
+        <p><strong>Preview mode.</strong> Click an element to select it. Text in headings and rich text can be edited inline in this demo. Changes are sent through the validated editing bridge and saved only to the demo store, never published. {secret ? '' : 'Demo token mode is active because no preview secret is configured.'}</p>
+      </div>
+      {page.elements.map((el: any) => <Renderer element={el} preview={true} />)}
+      <script>
+        import { validateEditorMessage } from '../../lib/editBridge.mjs';
+        const selected = { id: null as string | null };
+        document.querySelectorAll('[data-astro-builder-id]').forEach((node) => {
+          const el = node as HTMLElement;
+          el.addEventListener('click', (event) => {
+            event.stopPropagation();
+            document.querySelectorAll('[data-builder-selected]').forEach((n) => n.removeAttribute('data-builder-selected'));
+            el.setAttribute('data-builder-selected', 'true');
+            selected.id = el.getAttribute('data-astro-builder-id');
+            const message = { type: 'astro-builder:select', elementId: selected.id };
+            const check = validateEditorMessage(message, window.location.origin, window.location.origin);
+            if (check.valid && window.parent !== window) window.parent.postMessage(message, window.location.origin);
+            console.info('[preview] selected', selected.id);
+            if (el.tagName === 'H1' || el.tagName === 'H2' || el.tagName === 'P') {
+              el.setAttribute('contenteditable', 'true');
+              el.focus();
+            }
+          });
+          el.addEventListener('blur', async () => {
+            if (!el.hasAttribute('contenteditable') || !selected.id) return;
+            el.removeAttribute('contenteditable');
+            const message = { type: 'astro-builder:update-text', elementId: selected.id, text: el.textContent ?? '' };
+            const check = validateEditorMessage(message, window.location.origin, window.location.origin);
+            if (!check.valid) { console.warn('[preview] rejected edit message', check.errors); return; }
+            await fetch('/api/builder/save', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ demoEdit: message }) }).catch(() => null);
+          });
+        });
+      </script>
+    </div>
+  ) : (
+    <div class="container" style="padding: 4rem 1.25rem;">
+      <h1>401: A valid preview token is required</h1>
+      <p>Draft content is protected. In the demo, use <code>/preview/home?token=demo</code>. In production, TYPO3 issues a short lived HMAC preview token.</p>
+    </div>
+  )}
+</BaseLayout>
