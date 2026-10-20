@@ -1,0 +1,165 @@
+{
+  "id": "page-home",
+  "slug": "home",
+  "title": "Home",
+  "status": "published",
+  "locale": "en",
+  "seo": {
+    "title": "AstroTYPO3: TYPO3 and Astro Visual Builder",
+    "description": "AI powered visual website builder with a TYPO3 extension and an Astro frontend, connected by a shared content contract.",
+    "canonical": "https://astrotypo3.woodwolfdigital.com/"
+  },
+  "elements": [
+    {
+      "id": "el-header",
+      "componentId": "navigation.header",
+      "props": {
+        "brand": "AstroTYPO3",
+        "links": [
+          {
+            "label": "Home",
+            "href": "/"
+          },
+          {
+            "label": "About",
+            "href": "/about"
+          },
+          {
+            "label": "Builder",
+            "href": "/builder"
+          },
+          {
+            "label": "Templates",
+            "href": "/templates"
+          },
+          {
+            "label": "Audit",
+            "href": "/audit"
+          }
+        ]
+      }
+    },
+    {
+      "id": "el-hero",
+      "componentId": "section.hero",
+      "props": {
+        "heading": "Build websites visually with TYPO3 and Astro",
+        "subheading": "TYPO3 manages structured content. Astro renders it fast. AI proposes validated changes, never unchecked code.",
+        "ctaLabel": "Open the visual builder",
+        "ctaHref": "/builder",
+        "imageSrc": "",
+        "imageAlt": ""
+      }
+    },
+    {
+      "id": "el-features",
+      "componentId": "section.feature-grid",
+      "props": {
+        "heading": "One product, two packages",
+        "items": [
+          {
+            "title": "TYPO3 extension",
+            "text": "Pages, permissions, revisions, content API, preview tokens and publishing in PHP."
+          },
+          {
+            "title": "Astro frontend",
+            "text": "Server rendered routes, design tokens, SEO output and the editing bridge."
+          },
+          {
+            "title": "Shared contract",
+            "text": "One registry and JSON schemas keep PHP and TypeScript in sync."
+          },
+          {
+            "title": "Visual builder",
+            "text": "Drag, reorder, inspect and edit properties in the browser."
+          },
+          {
+            "title": "Template library",
+            "text": "Presets, sections, pages and a full agency starter site."
+          },
+          {
+            "title": "Safe AI layer",
+            "text": "Mock provider by default. Change plans are allowlisted and validated."
+          }
+        ]
+      }
+    },
+    {
+      "id": "el-how",
+      "componentId": "section.image-text",
+      "props": {
+        "heading": "How the demo works",
+        "text": "This homepage is rendered from a fixture page that follows the same contract the TYPO3 API returns. Switch the content source to a live TYPO3 endpoint by setting TYPO3_CONTENT_API_URL.",
+        "imageSrc": "https://placehold.co/900x700",
+        "imageAlt": "Diagram placeholder showing TYPO3 connected to Astro",
+        "reversed": false
+      }
+    },
+    {
+      "id": "el-testimonials",
+      "componentId": "section.testimonials",
+      "props": {
+        "heading": "Sample feedback",
+        "items": [
+          {
+            "quote": "Sample quote used only to demonstrate the testimonials component.",
+            "name": "Sample Editor",
+            "role": "Content editor, sample data"
+          }
+        ]
+      }
+    },
+    {
+      "id": "el-faq",
+      "componentId": "section.faq",
+      "props": {
+        "heading": "Frequently asked questions",
+        "items": [
+          {
+            "question": "Is the AI live in this demo?",
+            "answer": "No. The demo endpoints use a clearly labelled mock provider. Connect a real provider server side in TYPO3 or in the Astro endpoint."
+          },
+          {
+            "question": "Can drafts leak publicly?",
+            "answer": "No. Public routes only load published pages. Draft routes require a preview token."
+          },
+          {
+            "question": "Does Astro run inside TYPO3?",
+            "answer": "No. They are separate applications connected by a versioned content API."
+          }
+        ]
+      }
+    },
+    {
+      "id": "el-cta",
+      "componentId": "section.cta",
+      "props": {
+        "heading": "Try the builder yourself",
+        "text": "Add components, change properties, undo, redo and save a draft in demo mode.",
+        "ctaLabel": "Open the builder",
+        "ctaHref": "/builder"
+      }
+    },
+    {
+      "id": "el-footer",
+      "componentId": "navigation.footer",
+      "props": {
+        "text": "AstroTYPO3 demo. Built with TYPO3, Astro and a shared content contract.",
+        "links": [
+          {
+            "label": "Home",
+            "href": "/"
+          },
+          {
+            "label": "Builder",
+            "href": "/builder"
+          },
+          {
+            "label": "Templates",
+            "href": "/templates"
+          }
+        ]
+      }
+    }
+  ]
+}
