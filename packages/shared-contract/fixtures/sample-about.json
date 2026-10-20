@@ -1,0 +1,32 @@
+{
+  "id": "page-about",
+  "slug": "about",
+  "title": "About",
+  "status": "published",
+  "locale": "en",
+  "seo": {
+    "title": "About: AstroTYPO3",
+    "description": "About the AstroTYPO3 builder product.",
+    "canonical": "https://astrotypo3.woodwolfdigital.com/about"
+  },
+  "elements": [
+    {
+      "id": "el-about-h",
+      "componentId": "content.heading",
+      "props": {
+        "text": "About AstroTYPO3",
+        "level": 1
+      }
+    },
+    {
+      "id": "el-about-it",
+      "componentId": "section.image-text",
+      "props": {
+        "heading": "Why two packages",
+        "text": "TYPO3 is excellent at content governance. Astro is excellent at rendering. The contract keeps each in its strength.",
+        "imageSrc": "https://placehold.co/900x700",
+        "imageAlt": "Placeholder image for the about page"
+      }
+    }
+  ]
+}
