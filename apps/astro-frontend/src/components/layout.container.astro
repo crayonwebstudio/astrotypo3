@@ -1,0 +1,9 @@
+---
+const { element, preview = false } = Astro.props;
+const p = element?.props ?? {};
+const attrs = preview ? { 'data-astro-builder-id': element.id, class: 'preview-editable' } : {};
+---
+
+<div {...attrs} class:list={['container-wrap']} style={`max-width: var(--container); margin: 0 auto; padding: ${p.padding === 'lg' ? '2.5rem' : p.padding === 'sm' ? '0.75rem' : '1.25rem'} 1.25rem;`}>
+  <slot />
+</div>
