@@ -1,0 +1,22 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Renderer from '../components/Renderer.astro';
+import { getPublishedPage } from '../lib/content.mjs';
+const slug = Astro.params.slug ?? '';
+const page: any = slug ? await getPublishedPage(slug) : null;
+if (!page) Astro.response.status = 404;
+---
+<BaseLayout title={page?.seo?.title ?? 'Not found: AstroTYPO3'} description={page?.seo?.description ?? ''} canonical={page?.seo?.canonical ?? ''}>
+  {page ? (
+    <div>
+      <div class="container" style="padding-top: 2rem;"><p><a href="/">Back to home</a></p></div>
+      {page.elements.map((el: any) => <Renderer element={el} />)}
+    </div>
+  ) : (
+    <div class="container" style="padding: 4rem 1.25rem;">
+      <h1>404: Page not found</h1>
+      <p>No published page exists for this address. Draft pages are never shown on public routes.</p>
+      <p><a class="btn btn-primary" href="/">Go to the homepage</a></p>
+    </div>
+  )}
+</BaseLayout>
