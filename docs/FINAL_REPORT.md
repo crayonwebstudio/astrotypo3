@@ -71,3 +71,10 @@ Unverified: anything that needs a running TYPO3 (extension loading, TCA renderin
 ## Roadmap tasks not completed, with reasons
 
 No phase was skipped silently. Phases 4, 11, 12, 13 and 14 are partial for the reasons in `docs/IMPLEMENTATION_STATUS.md`: they depend on a live TYPO3 instance, a real AI or image provider, or a configured deployment target, none of which exist in this local environment. Everything that could be built and verified without those external systems was built and verified.
+
+## Deployment addendum (2026-10-20, verified live)
+
+- GitHub: https://github.com/crayonwebstudio/astrotypo3 (111 files on main; only .github/workflows/ci.yml is missing because the stored token has no workflow scope, the file remains in the local repo)
+- Coolify: project astrotypo3 (kdygvgpt7khbtfnqqsxtqyct), app astrotypo3 (lbjuhudf3sqn1mrq6qr6u6ji) on Woodwolf server, deployment us4st3kgyz7igtauk7whr25a finished 2026-10-20T10:16:03Z, commit b376279
+- Live verification at https://astrotypo3.woodwolfdigital.com on 2026-10-20: /, /about, /builder, /templates, /audit, /sitemap.xml all HTTP 200, homepage title correct, content API 200, draft API 401 without token, preview 200 with demo token, AI generate 200 with mock provider labelled
+- Local run output: docs/LOCAL_RUN_OUTPUT.md (10/10 tests, build pass, full smoke suite pass on localhost:4321)
