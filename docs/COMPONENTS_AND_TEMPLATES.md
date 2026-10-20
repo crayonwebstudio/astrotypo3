@@ -6,7 +6,7 @@
 
 Each definition has: id, version, category, label, description, a props schema with types, defaults and required flags, optional `childrenAllowed`, accessibility notes and AI guidance.
 
-A contract test asserts that every registry ID has a matching Astro renderer file in `apps/astro-frontend/src/components/`. Adding a component means: add the registry entry, add the renderer, add builder support automatically (the inspector is generated from the props schema), and add a test fixture if it has new prop types.
+A contract test asserts that every registry ID has a matching Astro renderer file in `apps/astro-frontend/src/components/`. Adding a component means: add the registry entry, add the renderer, and builder support follows automatically (the GrapesJS component type, block and traits are generated from the registry and its props schema, see ADR 0005), and add a test fixture if it has new prop types. Element types created at runtime through the element types API have no dedicated renderer until one is added; the builder canvas shows them with a generic prop summary render.
 
 ## Templates
 
