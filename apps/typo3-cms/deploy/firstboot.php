@@ -4,12 +4,19 @@ declare(strict_types=1);
 /**
  * First boot installer for the AstroTYPO3 TYPO3 container.
  *
- * Idempotent. On a fresh instance (no settings.php) it tries the official
- * TYPO3 setup CLI first. If that does not produce a working installation,
- * it falls back to writing settings.php manually, creating the schema with
- * database:updateschema and creating the admin user directly.
- * On later boots it only ensures schema, admin user, root page and the
- * root TypoScript template exist.
+ * Idempotent. "Installed" means: settings.php exists, its database driver
+ * is pdo_sqlite, and the sqlite database actually contains the be_users
+ * table. Anything short of that triggers installation:
+ *
+ *   1. Official TYPO3 setup CLI with --driver=sqlite (the supported way
+ *      to create the initial schema; database:updateschema cannot
+ *      bootstrap an empty database because extensions query their own
+ *      tables during that command).
+ *   2. Manual fallback: write settings.php, then database:updateschema.
+ *
+ * Afterwards it ensures the schema is current, syncs the install tool
+ * password from the environment, and seeds the backend admin user, the
+ * root page, an about page and the root TypoScript template directly.
  *
  * Credentials come from the environment (TYPO3_ADMIN_PASSWORD,
  * TYPO3_INSTALL_PASSWORD). They are never printed.
@@ -34,11 +41,46 @@ function fbRun(string $command): int
     $output = [];
     $code = 0;
     exec($command . ' 2>&1', $output, $code);
-    foreach (array_slice($output, -25) as $line) {
+    foreach (array_slice($output, -30) as $line) {
         echo '    ' . $line . "\n";
     }
     fbLog('exit code: ' . $code);
     return $code;
+}
+
+function fbConfiguredDriver(string $settingsFile): ?string
+{
+    if (!is_file($settingsFile)) {
+        return null;
+    }
+    $settings = require $settingsFile;
+    if (!is_array($settings)) {
+        return null;
+    }
+    $driver = $settings['DB']['Connections']['Default']['driver'] ?? null;
+    return is_string($driver) ? $driver : null;
+}
+
+function fbSqliteHasTable(string $dbFile, string $table): bool
+{
+    if (!is_file($dbFile)) {
+        return false;
+    }
+    try {
+        $pdo = new PDO('sqlite:' . $dbFile);
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name = ?");
+        $stmt->execute([$table]);
+        return (int)$stmt->fetchColumn() > 0;
+    } catch (Throwable) {
+        return false;
+    }
+}
+
+function fbIsInstalled(string $settingsFile, string $dbFile): bool
+{
+    return is_file($settingsFile)
+        && fbConfiguredDriver($settingsFile) === 'pdo_sqlite'
+        && fbSqliteHasTable($dbFile, 'be_users');
 }
 
 if ($adminPassword === '' || $installPassword === '') {
@@ -49,10 +91,15 @@ if ($adminPassword === '' || $installPassword === '') {
 chdir($appDir);
 
 // ---------------------------------------------------------------------------
-// Step 1: installation (settings.php + database)
+// Step 1: installation (settings.php + database schema)
 // ---------------------------------------------------------------------------
-if (!is_file($settingsFile)) {
-    fbLog('no settings.php found, trying official typo3 setup CLI');
+if (!fbIsInstalled($settingsFile, $dbFile)) {
+    fbLog('not installed yet, trying official typo3 setup CLI (driver sqlite)');
+    if (is_file($dbFile) && !fbSqliteHasTable($dbFile, 'be_users')) {
+        // An empty or schema-less sqlite file blocks the setup; remove it.
+        unlink($dbFile);
+        fbLog('removed schema-less sqlite file so setup can create it');
+    }
     $setupCommand = sprintf(
         'vendor/bin/typo3 setup --no-interaction --force --driver=%s --project-name=%s --server-type=%s'
         . ' --admin-username=%s --admin-user-password=%s --admin-email=%s',
@@ -66,18 +113,8 @@ if (!is_file($settingsFile)) {
     fbRun($setupCommand);
 }
 
-// The setup command can leave a settings.php behind even when it fails
-// (with a default mysqli connection). Only a settings.php that actually
-// points at pdo_sqlite counts as installed here.
-$configuredDriver = null;
-if (is_file($settingsFile)) {
-    $existingSettings = require $settingsFile;
-    if (is_array($existingSettings)) {
-        $configuredDriver = $existingSettings['DB']['Connections']['Default']['driver'] ?? null;
-    }
-}
-if (!is_file($settingsFile) || $configuredDriver !== 'pdo_sqlite') {
-    fbLog('no working sqlite settings found (driver: ' . var_export($configuredDriver, true) . '), using manual fallback');
+if (!fbIsInstalled($settingsFile, $dbFile) && fbConfiguredDriver($settingsFile) !== 'pdo_sqlite') {
+    fbLog('setup CLI did not produce a sqlite installation, using manual settings fallback');
     $settings = [
         'BE' => [
             'debug' => false,
@@ -121,49 +158,57 @@ if (!is_file($settingsFile) || $configuredDriver !== 'pdo_sqlite') {
             'systemMaintainers' => [1],
         ],
     ];
-    $content = "<?php\nreturn " . var_export($settings, true) . ";\n";
     if (!is_dir(dirname($settingsFile))) {
         mkdir(dirname($settingsFile), 0775, true);
     }
-    file_put_contents($settingsFile, $content);
+    file_put_contents($settingsFile, "<?php\nreturn " . var_export($settings, true) . ";\n");
     fbLog('settings.php written by fallback');
 }
 
-// Make sure the install tool password matches the environment, in case the
-// setup CLI created settings.php with its own value.
-if (is_file($settingsFile)) {
-    $current = require $settingsFile;
-    if (is_array($current)) {
-        $hash = $current['BE']['installToolPassword'] ?? '';
-        if (!is_string($hash) || !password_verify($installPassword, $hash)) {
-            $current['BE']['installToolPassword'] = password_hash($installPassword, PASSWORD_ARGON2I);
-            file_put_contents($settingsFile, "<?php\nreturn " . var_export($current, true) . ";\n");
-            fbLog('install tool password updated from environment');
+if (!fbIsInstalled($settingsFile, $dbFile)) {
+    // Schema creation attempt for the fallback path (and a repair attempt
+    // if the setup CLI created settings but no schema). Run twice: the
+    // first pass creates most tables even if a late step fails.
+    fbRun('vendor/bin/typo3 database:updateschema');
+    if (!fbIsInstalled($settingsFile, $dbFile)) {
+        fbRun('vendor/bin/typo3 database:updateschema');
+    }
+}
+
+if (!fbIsInstalled($settingsFile, $dbFile)) {
+    $found = glob($appDir . '/var/**/*.sqlite') ?: [];
+    $found = array_merge($found, glob($appDir . '/var/*.sqlite') ?: []);
+    foreach ($found as $candidate) {
+        if (fbSqliteHasTable($candidate, 'be_users')) {
+            $dbFile = $candidate;
+            fbLog('using sqlite database at ' . $dbFile);
+            break;
         }
     }
 }
 
-// ---------------------------------------------------------------------------
-// Step 2: database schema (creates all core and extension tables)
-// ---------------------------------------------------------------------------
-fbRun('vendor/bin/typo3 database:updateschema');
+if (!fbIsInstalled($settingsFile, $dbFile)) {
+    fbLog('ERROR: installation did not succeed. TYPO3 will not work until this is fixed.');
+    return;
+}
+fbLog('installation present (settings + sqlite schema)');
 
-if (!is_file($dbFile)) {
-    // The setup CLI may use a different sqlite location. Look for it.
-    $found = glob($appDir . '/var/**/*.sqlite', GLOB_BRACE) ?: [];
-    $found = array_merge($found, glob($appDir . '/var/*.sqlite') ?: []);
-    if ($found !== []) {
-        $dbFile = $found[0];
-        fbLog('using sqlite database at ' . $dbFile);
-    } else {
-        fbLog('ERROR: no sqlite database file found after setup. TYPO3 will not work.');
-        return;
+// Sync the install tool password with the environment.
+$current = require $settingsFile;
+if (is_array($current)) {
+    $hash = $current['BE']['installToolPassword'] ?? '';
+    if (!is_string($hash) || !password_verify($installPassword, $hash)) {
+        $current['BE']['installToolPassword'] = password_hash($installPassword, PASSWORD_ARGON2I);
+        file_put_contents($settingsFile, "<?php\nreturn " . var_export($current, true) . ";\n");
+        fbLog('install tool password updated from environment');
     }
 }
 
 // ---------------------------------------------------------------------------
-// Step 3: admin user, root page, root template (direct PDO, idempotent)
+// Step 2: schema updates for extension tables, then seeding
 // ---------------------------------------------------------------------------
+fbRun('vendor/bin/typo3 database:updateschema');
+
 try {
     $pdo = new PDO('sqlite:' . $dbFile);
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
@@ -182,7 +227,7 @@ try {
         fbLog('backend admin user already exists');
     }
 
-    $rootExists = (int)$pdo->query("SELECT COUNT(*) FROM pages WHERE uid = 1")->fetchColumn() > 0;
+    $rootExists = (int)$pdo->query('SELECT COUNT(*) FROM pages WHERE uid = 1')->fetchColumn() > 0;
     if (!$rootExists) {
         $stmt = $pdo->prepare(
             'INSERT INTO pages (uid, pid, tstamp, crdate, doktype, title, slug, is_siteroot, hidden, deleted, sorting, sys_language_uid, perms_userid, perms_groupid, perms_user, perms_group, perms_everybody)'
@@ -194,7 +239,7 @@ try {
         fbLog('root page already exists');
     }
 
-    $aboutExists = (int)$pdo->query("SELECT COUNT(*) FROM pages WHERE uid = 2")->fetchColumn() > 0;
+    $aboutExists = (int)$pdo->query('SELECT COUNT(*) FROM pages WHERE uid = 2')->fetchColumn() > 0;
     if (!$aboutExists) {
         $stmt = $pdo->prepare(
             'INSERT INTO pages (uid, pid, tstamp, crdate, doktype, title, slug, is_siteroot, hidden, deleted, sorting, sys_language_uid, perms_userid, perms_groupid, perms_user, perms_group, perms_everybody)'
@@ -204,7 +249,7 @@ try {
         fbLog('about page created (uid 2, slug /about)');
     }
 
-    $templateExists = (int)$pdo->query("SELECT COUNT(*) FROM sys_template WHERE uid = 1")->fetchColumn() > 0;
+    $templateExists = (int)$pdo->query('SELECT COUNT(*) FROM sys_template WHERE uid = 1')->fetchColumn() > 0;
     if (!$templateExists) {
         $typoscript = implode("\n", [
             'page = PAGE',
@@ -212,7 +257,7 @@ try {
             'page.10.data = page:title',
             'page.10.wrap = <h1>|</h1>',
             'page.20 = TEXT',
-            'page.20.value = This TYPO3 13 instance provides content for the AstroTYPO3 frontend through the astro_builder content API at /api/content/v1. The public website is rendered by Astro.',
+            'page.20.value = This TYPO3 13 instance is the API backend for the AstroTYPO3 frontend. Content is served through the astro_builder content API. The public website is rendered by Astro.',
             'page.20.wrap = <p>|</p>',
         ]);
         $stmt = $pdo->prepare(
@@ -232,7 +277,7 @@ try {
 }
 
 // ---------------------------------------------------------------------------
-// Step 4: caches
+// Step 3: caches
 // ---------------------------------------------------------------------------
 fbRun('vendor/bin/typo3 cache:flush');
 fbLog('done');
