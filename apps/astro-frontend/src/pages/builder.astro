@@ -121,6 +121,7 @@ const builderConfig = {
     import { buildGrapesTypes, buildGrapesBlocks, renderElementHtml, propsToAttributes, attributesToProps, defaultsForProps } from '../lib/grapesRegistry.mjs';
     import { registryToElementTypes, mergeElementTypes, elementTypeToRegistryComponent, ctypeFor, ALLOWED_FIELD_TYPES } from '../lib/elementTypes.mjs';
     import { createTypo3ApiClient, registerGrapesStorage, GRAPES_STORAGE_TYPE_ID, pageToGrapesComponents, grapesComponentsToPage, elementToComponentData, DRAFT_LOCALSTORAGE_KEY, getTypo3ApiBase } from '../lib/typo3Storage.mjs';
+    import { createDirtyTracker } from '../lib/dirtyTracking.mjs';
     import { validatePage, validateChangePlan } from '../lib/validate.mjs';
     import { auditPage } from '../lib/audit.mjs';
 
@@ -256,19 +257,23 @@ const builderConfig = {
       editor.setComponents(pageToGrapesComponents(page, registryState));
     }
 
-    function markDirty() {
-      let count = 0;
-      try { count = editor.getDirtyCount(); } catch { count = 1; }
+    // Dirty tracking lives in lib/dirtyTracking.mjs. GrapesJS 0.23.8
+    // increments its change counter asynchronously (a debounced
+    // setTimeout in EditorModel.handleUpdates), so a synchronous
+    // clearDirtyCount() after setComponents is overwritten one tick
+    // later by the load's own pending increment. The tracker gates the
+    // label while initializing and only establishes the clean state
+    // after the counter has settled (see the module header).
+    let dirtyTracker = null;
+    function showUnsaved(count) {
       document.getElementById('unsaved').textContent = count > 0 ? 'Unsaved changes' : '';
     }
+    function markDirty() {
+      if (dirtyTracker) dirtyTracker.refresh();
+    }
     function markClean() {
-      // Reset the editor's own dirty counter as well as the label.
-      // Loading a page into the canvas (setComponents during applyPage)
-      // counts as changes in GrapesJS, so without clearDirtyCount() the
-      // next 'update' event would re-read a stale positive count in
-      // markDirty() and show "Unsaved changes" before any real edit.
-      try { if (editor) editor.clearDirtyCount(); } catch {}
-      document.getElementById('unsaved').textContent = '';
+      if (dirtyTracker) dirtyTracker.markClean();
+      else document.getElementById('unsaved').textContent = '';
     }
 
     function initEditor() {
@@ -304,6 +309,8 @@ const builderConfig = {
           registerGrapesStorage(ed, storageState, client);
         }],
       });
+
+      dirtyTracker = createDirtyTracker(editor, showUnsaved);
 
       for (const def of registryState.components) registerComponentType(def);
 
@@ -365,7 +372,10 @@ const builderConfig = {
           const page = await client.loadPage(slug);
           if (!page) { setStatus('No published page found for slug "' + slug + '" in the content API.'); return; }
           applyPage(page);
-          markClean();
+          // The load's setComponents schedules debounced counter
+          // increments; settle before resetting or the label flips back
+          // to "Unsaved changes" one tick later.
+          await dirtyTracker.settleAndMarkClean();
           setStatus('Loaded page "' + slug + '" from the content API.');
         } catch (err) { setStatus('Load failed: ' + String(err)); }
       });
@@ -398,7 +408,9 @@ const builderConfig = {
         storageState.page = page;
         try {
           const out = await editor.store();
-          markClean();
+          // A debounced increment from the last edit can still be
+          // pending at store time; settle, then reset.
+          await dirtyTracker.settleAndMarkClean();
           setStatus('Saved draft through the typo3-api storage adapter. ' + ((out && out.notice) || ''));
         } catch (err) {
           setStatus('Saved to the local backup only. API save failed: ' + String(err && err.message ? err.message : err));
@@ -534,7 +546,13 @@ const builderConfig = {
         wireNewElementTypeForm();
         wireAiPanel();
         await loadInitialPage();
-        markClean();
+        // True end of initialization: every async step above has
+        // resolved and the final setComponents is in the canvas. Only
+        // now establish the clean state, after the GrapesJS change
+        // counter (debounced, async) has settled. A plain markClean()
+        // here was overwritten one tick later by the load's pending
+        // increment, which is why "Unsaved changes" showed on load.
+        await dirtyTracker.finishInitialization();
         setStatus(client.base
           ? 'Builder ready. Blocks are TYPO3 core element types, traits are their fields. Storage target: live TYPO3 at ' + client.base + '. Enter a preview token in the toolbar before saving.'
           : 'Builder ready. Blocks are TYPO3 core element types, traits are their fields. Demo API storage: saves go to the demo endpoint in this app.');
