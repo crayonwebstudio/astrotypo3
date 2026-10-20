@@ -56,7 +56,7 @@ if (!is_file($settingsFile)) {
     $setupCommand = sprintf(
         'vendor/bin/typo3 setup --no-interaction --force --driver=%s --project-name=%s --server-type=%s'
         . ' --admin-username=%s --admin-user-password=%s --admin-email=%s',
-        escapeshellarg('pdo_sqlite'),
+        escapeshellarg('sqlite'),
         escapeshellarg('AstroTYPO3'),
         escapeshellarg('apache'),
         escapeshellarg($adminUser),
@@ -66,8 +66,18 @@ if (!is_file($settingsFile)) {
     fbRun($setupCommand);
 }
 
-if (!is_file($settingsFile)) {
-    fbLog('setup CLI did not create settings.php, using manual fallback');
+// The setup command can leave a settings.php behind even when it fails
+// (with a default mysqli connection). Only a settings.php that actually
+// points at pdo_sqlite counts as installed here.
+$configuredDriver = null;
+if (is_file($settingsFile)) {
+    $existingSettings = require $settingsFile;
+    if (is_array($existingSettings)) {
+        $configuredDriver = $existingSettings['DB']['Connections']['Default']['driver'] ?? null;
+    }
+}
+if (!is_file($settingsFile) || $configuredDriver !== 'pdo_sqlite') {
+    fbLog('no working sqlite settings found (driver: ' . var_export($configuredDriver, true) . '), using manual fallback');
     $settings = [
         'BE' => [
             'debug' => false,
