@@ -34,8 +34,8 @@
     }
   ],
   "require": {
-    "crayonwebstudio/astro-builder": "*",
-    "crayonwebstudio/astrotypo3-site": "*",
+    "crayonwebstudio/astro-builder": "dev-main",
+    "crayonwebstudio/astrotypo3-site": "dev-main",
     "php": "^8.2",
     "typo3/cms-about": "^13.4",
     "typo3/cms-backend": "^13.4",
@@ -69,5 +69,6 @@
     "typo3/cms-viewpage": "^13.4",
     "typo3/cms-workspaces": "^13.4"
   },
-  "type": "project"
+  "type": "project",
+  "prefer-stable": true
 }
