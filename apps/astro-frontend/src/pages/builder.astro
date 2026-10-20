@@ -121,7 +121,7 @@ const builderConfig = {
     import globalCss from '../styles/global.css?raw';
     import { buildGrapesTypes, buildGrapesBlocks, renderElementHtml, propsToAttributes, attributesToProps, defaultsForProps } from '../lib/grapesRegistry.mjs';
     import { registryToElementTypes, mergeElementTypes, elementTypeToRegistryComponent, ctypeFor, ALLOWED_FIELD_TYPES } from '../lib/elementTypes.mjs';
-    import { createTypo3ApiClient, createGrapesStorageType, pageToGrapesComponents, grapesComponentsToPage, elementToComponentData, DRAFT_LOCALSTORAGE_KEY, getTypo3ApiBase } from '../lib/typo3Storage.mjs';
+    import { createTypo3ApiClient, registerGrapesStorage, GRAPES_STORAGE_TYPE_ID, pageToGrapesComponents, grapesComponentsToPage, elementToComponentData, DRAFT_LOCALSTORAGE_KEY, getTypo3ApiBase } from '../lib/typo3Storage.mjs';
     import { validatePage, validateChangePlan } from '../lib/validate.mjs';
     import { auditPage } from '../lib/audit.mjs';
 
@@ -264,7 +264,7 @@ const builderConfig = {
         height: 'calc(100vh - 290px)',
         fromElement: false,
         noticeOnUnload: false,
-        storageManager: { type: 'typo3-api', autosave: false, autoload: false, stepsBeforeSave: 1 },
+        storageManager: { type: GRAPES_STORAGE_TYPE_ID, autosave: false, autoload: false, stepsBeforeSave: 1 },
         deviceManager: {
           devices: [
             { name: 'Desktop', width: '' },
@@ -285,7 +285,10 @@ const builderConfig = {
         canvas: { styles: [canvasCss] },
         panels: { defaults: [] },
         plugins: [(ed) => {
-          ed.Storage.addType('typo3-api', createGrapesStorageType(storageState, client));
+          // GrapesJS 0.23.8: custom storages register via StorageManager.add,
+          // there is no Storage.addType. registerGrapesStorage is the single
+          // shared code path, also covered by tests/storage-editor.test.mjs.
+          registerGrapesStorage(ed, storageState, client);
         }],
       });
 
