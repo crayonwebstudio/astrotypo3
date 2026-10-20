@@ -1,0 +1,7 @@
+---
+const { element, preview = false } = Astro.props;
+const p = element?.props ?? {};
+const attrs = preview ? { 'data-astro-builder-id': element.id, class: 'preview-editable' } : {};
+---
+
+<p {...attrs}><a class={`btn btn-${p.variant ?? 'primary'}`} href={p.href ?? '/'}>{p.label ?? 'Learn more'}</a></p>
