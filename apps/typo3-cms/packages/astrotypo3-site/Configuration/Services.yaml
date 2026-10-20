@@ -1,0 +1,11 @@
+services:
+  _defaults:
+    autowire: true
+    autoconfigure: true
+    public: false
+
+  Crayonwebstudio\AstroTypo3Site\:
+    resource: '../Classes/*'
+
+  Crayonwebstudio\AstroTypo3Site\Middleware\ApiDispatchMiddleware:
+    public: true
