@@ -1,306 +1,499 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
 import registry from '../data/registry.json';
-import templates from '../data/templates.json';
 import home from '../data/sample-published.json';
 ---
-<BaseLayout title="Visual builder: AstroTYPO3" description="Demo visual builder for AstroTYPO3.">
+<BaseLayout title="Visual builder: AstroTYPO3" description="GrapesJS visual builder for AstroTYPO3, connected to TYPO3 through the content API.">
   <style>
-    .builder-shell { display: grid; grid-template-columns: 280px minmax(0, 1fr) 340px; gap: 1rem; padding: 1rem; align-items: start; }
-    .builder-shell > * { min-width: 0; box-sizing: border-box; }
-    @media (max-width: 1000px) { .builder-shell { grid-template-columns: 1fr; } }
-    .panel { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius); padding: 1rem; }
-    .lib-item { display: block; width: 100%; text-align: left; margin: 0.35rem 0; padding: 0.6rem; border: 1px solid var(--color-border); border-radius: 8px; background: #fff; cursor: grab; }
-    .canvas-wrap { min-height: 500px; background: #fff; border: 1px solid var(--color-border); border-radius: var(--radius); padding: 1rem; margin: 0 auto; width: 100%; transition: max-width 0.2s; }
-    .canvas-el { border: 1px dashed transparent; padding: 0.5rem; margin: 0.4rem 0; position: relative; }
-    .canvas-el:hover { border-color: var(--color-border); }
-    .canvas-el.selected { border-color: var(--color-accent); outline: 2px solid var(--color-accent); }
-    .el-tools { display: flex; gap: 0.3rem; flex-wrap: wrap; margin-bottom: 0.4rem; }
-    .el-tools button, .toolbar button { padding: 0.3rem 0.6rem; cursor: pointer; }
-    .children-zone { border: 1px dashed var(--color-border); padding: 0.5rem; margin-left: 1rem; }
-    .toolbar { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; margin-bottom: 1rem; }
-    label { display: block; font-weight: 700; margin-top: 0.7rem; }
-    input, select, textarea { width: 100%; padding: 0.45rem; }
+    .builder-top { padding: 1rem 1rem 0; }
+    .builder-note { max-width: 70rem; }
+    .toolbar { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; margin: 0.75rem 0; }
+    .toolbar button { padding: 0.35rem 0.7rem; cursor: pointer; }
+    .toolbar input[type="text"] { padding: 0.4rem; }
     .status { padding: 0.6rem; background: #fff8f0; border: 1px solid var(--color-border); border-radius: 8px; white-space: pre-wrap; }
-  </style>
-  <style is:global>
-    /* Inspector fields are created by client JS, so Astro scoped styles do not reach them. */
-    #inspector label { display: block; font-weight: 700; margin: 0.9rem 0 0.3rem; overflow-wrap: anywhere; }
-    #inspector input, #inspector textarea, #inspector select { display: block; width: 100%; box-sizing: border-box; padding: 0.45rem; margin: 0; }
-    #inspector input[type="checkbox"] { display: inline-block; width: auto; }
-    #inspector p, #inspector h3 { overflow-wrap: anywhere; }
-    .canvas-el .el-tools { gap: 0.45rem; }
-    .canvas-el .el-tools button { margin: 0.15rem 0; }
+    .builder-layout { display: grid; grid-template-columns: 280px minmax(0, 1fr) 330px; gap: 0.75rem; padding: 0.75rem; align-items: start; }
+    @media (max-width: 1100px) { .builder-layout { grid-template-columns: 1fr; } }
+    .side-panel { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius); padding: 0.75rem; max-height: calc(100vh - 2rem); overflow-y: auto; }
+    .side-panel h2 { margin-top: 0.4rem; font-size: 1.05rem; }
+    .side-panel h3 { margin: 1rem 0 0.4rem; font-size: 0.95rem; }
+    .side-panel label { display: block; font-weight: 700; margin-top: 0.6rem; font-size: 0.9rem; }
+    .side-panel input[type="text"], .side-panel textarea, .side-panel select { width: 100%; padding: 0.4rem; box-sizing: border-box; }
+    .side-panel button { padding: 0.35rem 0.7rem; cursor: pointer; margin-top: 0.5rem; }
+    #gjs { border: 1px solid var(--color-border); border-radius: var(--radius); overflow: hidden; background: #fff; }
+    .panel-tabs { display: flex; gap: 0.4rem; margin-bottom: 0.6rem; }
+    .panel-tabs button.active { background: var(--color-primary); color: #fff; }
+    .net-field-row { border: 1px solid var(--color-border); border-radius: 8px; padding: 0.5rem; margin-top: 0.5rem; }
+    .net-field-row .row { display: flex; gap: 0.4rem; }
+    .net-field-row .row > * { flex: 1; min-width: 0; }
+    .selected-info { font-size: 0.85rem; background: #f6f2ec; border-radius: 8px; padding: 0.5rem; margin-bottom: 0.6rem; white-space: pre-wrap; }
   </style>
 
-  <div style="padding: 1rem 1rem 0;">
+  <div class="builder-top">
     <p><a href="/">Home</a> | <a href="/templates">Templates</a> | <a href="/audit">Audit</a> | <a href="/preview/home?token=demo">Draft preview demo</a></p>
-    <h1>Visual builder (demo)</h1>
-    <p>Demo mode: drafts save to browser local storage and to the demo save endpoint. Production editing goes through TYPO3 with real permissions. The AI panel uses a labelled mock provider.</p>
+    <h1>Visual builder</h1>
+    <p class="builder-note">Builder UI: GrapesJS (BSD-3-Clause). TYPO3 is the backend through the API only, there is no builder interface inside TYPO3 BE. Each block is a TYPO3 core content element type (CType) and each trait is a tt_content field. Demo mode: this app serves the same API contract locally (content, save and element types endpoints), labelled demo. The AI panel uses a labelled mock provider.</p>
     <div class="toolbar" role="toolbar" aria-label="Builder toolbar">
+      <label for="page-title">Title</label>
+      <input id="page-title" type="text" />
+      <label for="page-slug">Slug</label>
+      <input id="page-slug" type="text" />
+      <button id="btn-load" type="button">Load page</button>
+      <button id="btn-local-draft" type="button">Load local draft</button>
+      <span>Device:</span>
+      <button data-device="Desktop" type="button">Desktop</button>
+      <button data-device="Tablet" type="button">Tablet</button>
+      <button data-device="Mobile" type="button">Mobile</button>
       <button id="btn-undo" type="button">Undo</button>
       <button id="btn-redo" type="button">Redo</button>
       <button id="btn-save" type="button">Save draft</button>
       <button id="btn-validate" type="button">Validate</button>
       <button id="btn-publish" type="button">Publish</button>
-      <button id="btn-clear" type="button">Reset to home template</button>
-      <span>Preview width:</span>
-      <button data-width="100%" type="button">Desktop</button>
-      <button data-width="768px" type="button">Tablet</button>
-      <button data-width="390px" type="button">Mobile</button>
+      <button id="btn-reset" type="button">Reset to fixture home</button>
       <span id="unsaved" aria-live="polite"></span>
     </div>
-    <p id="status" class="status" aria-live="polite">Builder ready.</p>
+    <p id="status" class="status" aria-live="polite">Builder starting.</p>
   </div>
 
-  <div class="builder-shell">
-    <aside class="panel" aria-label="Component library">
-      <h2>Components</h2>
-      <input id="lib-search" type="search" placeholder="Search components" aria-label="Search components" />
-      <div id="library"></div>
-      <h2>AI assistant (mock)</h2>
+  <div class="builder-layout">
+    <aside class="side-panel" aria-label="Blocks and tools">
+      <h2>Blocks</h2>
+      <div id="blocks"></div>
+
+      <h3>New element type</h3>
+      <p style="font-size: 0.9rem;">Creating a type here registers it through <code>POST /api/v1/element-types</code>. In production TYPO3 creates the matching core element (CType) and the block appears below without a reload.</p>
+      <label for="net-id">Type id (dotted)</label>
+      <input id="net-id" type="text" placeholder="custom.pricing-table" />
+      <label for="net-label">Label</label>
+      <input id="net-label" type="text" placeholder="Pricing Table" />
+      <label for="net-category">Category</label>
+      <input id="net-category" type="text" placeholder="custom" />
+      <div id="net-fields"></div>
+      <button id="net-add-field" type="button">Add field</button>
+      <button id="net-create" type="button">Create element type</button>
+      <p id="net-result" style="font-size: 0.9rem;" aria-live="polite"></p>
+
+      <h3>AI assistant (mock)</h3>
       <label for="ai-prompt">Describe a section or page</label>
       <textarea id="ai-prompt" rows="3" placeholder="For example: add an faq section"></textarea>
-      <button id="btn-ai" type="button" style="margin-top: 0.5rem;">Generate with mock AI</button>
+      <button id="btn-ai" type="button">Generate with mock AI</button>
       <div id="ai-result" style="margin-top: 0.5rem;"></div>
     </aside>
 
-    <main class="panel" aria-label="Canvas">
-      <label for="page-title">Page title</label>
-      <input id="page-title" type="text" />
-      <label for="page-slug">Slug</label>
-      <input id="page-slug" type="text" />
-      <div id="canvas" class="canvas-wrap"></div>
+    <main aria-label="Canvas">
+      <div id="gjs"></div>
     </main>
 
-    <aside class="panel" aria-label="Property inspector">
-      <h2>Inspector</h2>
-      <div id="inspector"><p>Select an element on the canvas to edit its properties. The form is generated from the component schema.</p></div>
+    <aside class="side-panel" aria-label="Traits and styles">
+      <div id="selected-info" class="selected-info">No element selected. Select a block on the canvas to edit its traits (tt_content fields).</div>
+      <div class="panel-tabs" role="tablist" aria-label="Editor panels">
+        <button id="tab-traits" type="button" class="active">Traits</button>
+        <button id="tab-styles" type="button">Styles</button>
+      </div>
+      <div id="traits-box"></div>
+      <div id="styles-box" hidden></div>
+      <p style="font-size: 0.85rem;">Styles tab: GrapesJS style manager edits canvas presentation only in this demo. It is not part of the TYPO3 content contract; published styling comes from the design tokens and the Astro renderers.</p>
     </aside>
   </div>
 
-  <script type="application/json" id="builder-data" set:html={JSON.stringify({ registry, templates, home })}></script>
+  <script type="application/json" id="builder-data" set:html={JSON.stringify({ registry, home })}></script>
 
   <script>
+    import grapesjs from 'grapesjs';
+    import 'grapesjs/dist/css/grapes.min.css';
+    import tokensCss from '../styles/tokens.css?raw';
+    import globalCss from '../styles/global.css?raw';
+    import { buildGrapesTypes, buildGrapesBlocks, renderElementHtml, propsToAttributes, attributesToProps, defaultsForProps } from '../lib/grapesRegistry.mjs';
+    import { registryToElementTypes, mergeElementTypes, elementTypeToRegistryComponent, ctypeFor, ALLOWED_FIELD_TYPES } from '../lib/elementTypes.mjs';
+    import { createTypo3ApiClient, createGrapesStorageType, pageToGrapesComponents, grapesComponentsToPage, elementToComponentData, DRAFT_LOCALSTORAGE_KEY } from '../lib/typo3Storage.mjs';
     import { validatePage, validateChangePlan } from '../lib/validate.mjs';
     import { auditPage } from '../lib/audit.mjs';
 
-    const data = JSON.parse(document.getElementById('builder-data').textContent);
-    const registry = data.registry;
-    const byId = new Map(registry.components.map((c) => [c.id, c]));
-    const LS_KEY = 'astrotypo3-builder-draft';
-    let uid = 100;
-    function nextId(cid) { uid += 1; return 'el-' + cid.replace(/[^a-z0-9]+/gi, '-') + '-' + uid; }
-    function defaultsFor(cid) {
-      const def = byId.get(cid); const props = {};
-      if (def) for (const [k, spec] of Object.entries(def.props || {})) if (spec.default !== undefined) props[k] = JSON.parse(JSON.stringify(spec.default));
-      return props;
+    const bundled = JSON.parse(document.getElementById('builder-data').textContent);
+    const client = createTypo3ApiClient({});
+    const canvasCss = tokensCss + '\n' + globalCss.replace(/@import[^;]+;/, '');
+
+    // Live registry state: bundled core components plus API-created types.
+    const registryState = { contractVersion: bundled.registry.contractVersion || '1.0.0', components: [...bundled.registry.components] };
+    const registryById = () => new Map(registryState.components.map((c) => [c.id, c]));
+
+    const pageMeta = { id: 'page-builder', slug: 'home', title: 'Home', locale: 'en', seo: {} };
+    const storageState = {
+      page: null,
+      meta: pageMeta,
+      registry: registryState,
+      getComponents: () => { const list = []; if (editor) editor.getWrapper().components().forEach((c) => list.push(c)); return list; },
+    };
+
+    let editor = null;
+    let uid = 1000;
+    const setStatus = (msg) => { document.getElementById('status').textContent = msg; };
+    const clone = (x) => JSON.parse(JSON.stringify(x));
+    function nextElementId(componentId) { uid += 1; return 'el-' + componentId.replace(/[^a-z0-9]+/gi, '-') + '-' + uid; }
+
+    function tagFor(def) {
+      if (def.id === 'navigation.header') return 'header';
+      if (def.id === 'navigation.footer') return 'footer';
+      if (def.id.startsWith('section.')) return 'section';
+      if (def.id === 'content.heading') return 'h2';
+      if (def.id === 'content.image') return 'figure';
+      if (def.id === 'content.divider') return 'hr';
+      return 'div';
     }
-    function clone(x) { return JSON.parse(JSON.stringify(x)); }
 
-    let page = loadInitial();
-    let selectedId = null;
-    let undoStack = [];
-    let redoStack = [];
-    let dirty = false;
+    function containerStyle(def, props) {
+      if (def.id === 'layout.container') {
+        const pad = props.padding === 'lg' ? '2.5rem' : props.padding === 'sm' ? '0.75rem' : '1.25rem';
+        const style = { 'max-width': 'var(--container)', margin: '0 auto', padding: pad + ' 1.25rem' };
+        if (props.background && props.background !== 'transparent') style.background = props.background;
+        return style;
+      }
+      if (def.id === 'layout.columns') return { display: 'grid', gap: '1.25rem', 'grid-template-columns': 'repeat(auto-fit, minmax(220px, 1fr))' };
+      return {};
+    }
 
-    function loadInitial() {
+    // Register one registry component as a GrapesJS component type + block.
+    function registerComponentType(def) {
+      const typeDesc = buildGrapesTypes({ components: [def] })[0];
+      if (!editor.DomComponents.getType(def.id)) {
+        editor.DomComponents.addType(def.id, {
+          model: {
+            defaults: {
+              tagName: tagFor(def),
+              traits: typeDesc.traits,
+              attributes: typeDesc.defaults.attributes,
+              droppable: def.childrenAllowed ? (dragged) => {
+                const draggedId = (dragged && dragged.getAttributes && dragged.getAttributes()['data-astro-component-id']) || (dragged && dragged.get && dragged.get('type'));
+                return def.childrenAllowed.includes(draggedId);
+              } : false,
+            },
+            init() {
+              if (def.childrenAllowed) {
+                try { this.setStyle(containerStyle(def, attributesToProps(def, this.get('attributes') || {}))); } catch {}
+              }
+            },
+            updated(property) {
+              if (property !== 'attributes') return;
+              if (def.childrenAllowed) {
+                try { this.setStyle(containerStyle(def, attributesToProps(def, this.get('attributes') || {}))); } catch {}
+              } else if (this.view) {
+                try { this.view.render(); } catch {}
+              }
+            },
+          },
+          view: def.childrenAllowed ? {} : {
+            render() {
+              // Leaf components have no GrapesJS children: the canvas shows
+              // the same markup the Astro renderer produces for these props.
+              this.renderAttributes();
+              if (!this.modelOpt.temporary) {
+                const attrs = this.model.get('attributes') || {};
+                this.el.innerHTML = renderElementHtml(def, attributesToProps(def, attrs), '');
+                this.postRender();
+              }
+              return this;
+            },
+          },
+        });
+      }
+      const block = buildGrapesBlocks({ components: [def] })[0];
+      if (!editor.BlockManager.get(block.id)) {
+        editor.BlockManager.add(block.id, { label: block.label, category: block.category, title: block.title, content: block.content });
+      }
+    }
+
+
+
+    function serializePage() {
+      const list = [];
+      editor.getWrapper().components().forEach((c) => list.push(c));
+      return grapesComponentsToPage(list, pageMeta, registryState);
+    }
+
+    function applyPage(page) {
+      storageState.page = page;
+      pageMeta.id = page.id || pageMeta.id;
+      pageMeta.slug = page.slug || pageMeta.slug;
+      pageMeta.title = page.title || '';
+      pageMeta.locale = page.locale || 'en';
+      pageMeta.seo = clone(page.seo || {});
+      storageState.meta = pageMeta;
+      document.getElementById('page-title').value = pageMeta.title;
+      document.getElementById('page-slug').value = pageMeta.slug;
+      editor.setComponents(pageToGrapesComponents(page, registryState));
+    }
+
+    function markDirty() {
+      let count = 0;
+      try { count = editor.getDirtyCount(); } catch { count = 1; }
+      document.getElementById('unsaved').textContent = count > 0 ? 'Unsaved changes' : '';
+    }
+    function markClean() { document.getElementById('unsaved').textContent = ''; }
+
+    function initEditor() {
+      editor = grapesjs.init({
+        container: '#gjs',
+        height: 'calc(100vh - 290px)',
+        fromElement: false,
+        noticeOnUnload: false,
+        storageManager: { type: 'typo3-api', autosave: false, autoload: false, stepsBeforeSave: 1 },
+        deviceManager: {
+          devices: [
+            { name: 'Desktop', width: '' },
+            { name: 'Tablet', width: '768px', widthMedia: '992px' },
+            { name: 'Mobile', width: '390px', widthMedia: '575px' },
+          ],
+        },
+        blockManager: { appendTo: '#blocks' },
+        traitManager: { appendTo: '#traits-box' },
+        styleManager: {
+          appendTo: '#styles-box',
+          sectors: [
+            { name: 'Dimension', open: false, properties: ['width', 'min-height', 'padding', 'margin'] },
+            { name: 'Typography', open: false, properties: ['font-size', 'font-weight', 'letter-spacing', 'color', 'line-height', 'text-align'] },
+            { name: 'Decorations', open: false, properties: ['background-color', 'border', 'border-radius', 'box-shadow'] },
+          ],
+        },
+        canvas: { styles: [canvasCss] },
+        panels: { defaults: [] },
+        plugins: [(ed) => {
+          ed.Storage.addType('typo3-api', createGrapesStorageType(storageState, client));
+        }],
+      });
+
+      for (const def of registryState.components) registerComponentType(def);
+
+      // New components dropped from blocks need a stable element id.
+      editor.on('component:add', (comp) => {
+        try {
+          const attrs = comp.getAttributes() || {};
+          const cid = attrs['data-astro-component-id'] || comp.get('type');
+          if (cid && !attrs['data-astro-element-id']) {
+            comp.addAttributes({ 'data-astro-component-id': cid, 'data-astro-element-id': nextElementId(cid) });
+          }
+        } catch {}
+      });
+      editor.on('component:selected', (comp) => {
+        const attrs = (comp && comp.getAttributes && comp.getAttributes()) || {};
+        const cid = attrs['data-astro-component-id'] || (comp && comp.get && comp.get('type')) || '';
+        document.getElementById('selected-info').textContent =
+          'Element: ' + (attrs['data-astro-element-id'] || '(no id)') + '\nComponent: ' + cid + '\nTYPO3 CType: ' + (cid ? ctypeFor(cid) : '(none)');
+      });
+      editor.on('component:deselected', () => {
+        document.getElementById('selected-info').textContent = 'No element selected. Select a block on the canvas to edit its traits (tt_content fields).';
+      });
+      editor.on('update', markDirty);
+    }
+
+    async function loadInitialPage() {
+      // Template hand-off from /templates keeps working.
       const pending = localStorage.getItem('astrotypo3-apply-template');
       if (pending) {
         localStorage.removeItem('astrotypo3-apply-template');
         try {
           const t = JSON.parse(pending);
-          if (t.mode === 'replace') return { id: 'page-builder', slug: t.slug || 'home', title: t.title || 'Untitled page', status: 'draft', locale: 'en', seo: { title: '', description: '' }, elements: clone(t.elements || []) };
-          const saved = loadSaved();
-          if (saved) { saved.elements = saved.elements.concat(clone(t.elements || [])); return saved; }
+          if (t.mode === 'replace') {
+            applyPage({ id: 'page-builder', slug: t.slug || 'home', title: t.title || 'Untitled page', status: 'draft', locale: 'en', seo: { title: '', description: '' }, elements: clone(t.elements || []) });
+            setStatus('Template applied in replace mode. Review, then Save draft.');
+            return;
+          }
+          const base = (await client.loadPage(t.slug || 'home')) || bundled.home;
+          applyPage({ ...clone(base), elements: clone(base.elements || []).concat(clone(t.elements || [])) });
+          setStatus('Template sections appended. Review, then Save draft.');
+          return;
         } catch {}
       }
-      return loadSaved() || { id: 'page-builder', slug: data.home.slug, title: data.home.title, status: 'draft', locale: 'en', seo: clone(data.home.seo || {}), elements: clone(data.home.elements || []) };
-    }
-    function loadSaved() {
-      try { const raw = localStorage.getItem(LS_KEY); return raw ? JSON.parse(raw) : null; } catch { return null; }
-    }
-    function snapshot() { undoStack.push(clone(page.elements)); if (undoStack.length > 60) undoStack.shift(); redoStack = []; }
-    function markDirty() { dirty = true; document.getElementById('unsaved').textContent = 'Unsaved changes'; }
-    function setStatus(msg) { document.getElementById('status').textContent = msg; }
-
-    function findListAndIndex(list, id) {
-      for (let i = 0; i < list.length; i++) {
-        if (list[i].id === id) return { list, index: i, el: list[i] };
-        if (list[i].children) { const found = findListAndIndex(list[i].children, id); if (found) return found; }
-      }
-      return null;
-    }
-    function findEl(id) { const f = findListAndIndex(page.elements, id); return f ? f.el : null; }
-
-    function previewText(el) {
-      const p = el.props || {};
-      return String(p.heading || p.text || p.label || p.brand || (typeof p.html === 'string' ? p.html.replace(/<[^>]+>/g, '') : '') || el.componentId).slice(0, 140);
+      const slug = new URLSearchParams(location.search).get('slug') || 'home';
+      let page = null;
+      try { page = await client.loadPage(slug); } catch (err) { setStatus('Content API load failed, using bundled fixture. ' + String(err)); }
+      applyPage(page || clone(bundled.home));
     }
 
-    function renderCanvas() {
-      const canvas = document.getElementById('canvas');
-      canvas.innerHTML = '';
-      const renderList = (list, parent) => {
-        for (const el of list) {
-          const def = byId.get(el.componentId);
-          const box = document.createElement('div');
-          box.className = 'canvas-el' + (el.id === selectedId ? ' selected' : '');
-          box.setAttribute('data-element-id', el.id);
-          box.draggable = true;
-          box.addEventListener('click', (e) => { e.stopPropagation(); selectedId = el.id; renderCanvas(); renderInspector(); });
-          box.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text/element-id', el.id); });
-          box.addEventListener('dragover', (e) => { e.preventDefault(); });
-          box.addEventListener('drop', (e) => {
-            e.preventDefault(); e.stopPropagation();
-            const libCid = e.dataTransfer.getData('text/component-id');
-            const dragId = e.dataTransfer.getData('text/element-id');
-            if (libCid) addElement(libCid, el.id);
-            else if (dragId && dragId !== el.id) moveElementBefore(dragId, el.id);
-          });
-          const tools = document.createElement('div'); tools.className = 'el-tools';
-          const label = document.createElement('strong'); label.textContent = (def ? def.label : el.componentId) + ': '; tools.appendChild(label);
-          const txt = document.createElement('span'); txt.textContent = previewText(el); tools.appendChild(txt);
-          const mk = (name, fn) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = name; b.addEventListener('click', (e) => { e.stopPropagation(); fn(); }); return b; };
-          tools.appendChild(mk('Up', () => move(el.id, -1)));
-          tools.appendChild(mk('Down', () => move(el.id, 1)));
-          tools.appendChild(mk('Duplicate', () => { snapshot(); const f = findListAndIndex(page.elements, el.id); const copy = clone(f.el); copy.id = nextId(copy.componentId); f.list.splice(f.index + 1, 0, copy); afterChange('Duplicated ' + copy.componentId); }));
-          tools.appendChild(mk('Delete', () => { if (!confirm('Delete this element?')) return; snapshot(); const f = findListAndIndex(page.elements, el.id); f.list.splice(f.index, 1); if (selectedId === el.id) selectedId = null; afterChange('Deleted ' + el.componentId); }));
-          box.appendChild(tools);
-          parent.appendChild(box);
-          if (def && def.childrenAllowed) {
-            const zone = document.createElement('div'); zone.className = 'children-zone';
-            zone.textContent = el.children && el.children.length ? '' : 'Drop or add child components here. Allowed: ' + def.childrenAllowed.join(', ');
-            box.appendChild(zone);
-            if (el.children) renderList(el.children, zone);
-          }
-        }
-      };
-      renderList(page.elements, canvas);
-      document.getElementById('page-title').value = page.title || '';
-      document.getElementById('page-slug').value = page.slug || '';
-    }
-
-    function afterChange(msg) { markDirty(); renderCanvas(); renderInspector(); if (msg) setStatus(msg); }
-
-    function addElement(cid, afterId) {
-      const def = byId.get(cid); if (!def) return;
-      const el = { id: nextId(cid), componentId: cid, props: defaultsFor(cid) };
-      if (def.childrenAllowed) el.children = [];
-      snapshot();
-      if (selectedId) {
-        const sel = findEl(selectedId); const selDef = sel ? byId.get(sel.componentId) : null;
-        if (sel && selDef && selDef.childrenAllowed && selDef.childrenAllowed.includes(cid)) { sel.children = sel.children || []; sel.children.push(el); selectedId = el.id; afterChange('Added ' + cid + ' inside ' + sel.componentId); return; }
-      }
-      if (afterId) { const f = findListAndIndex(page.elements, afterId); if (f) { f.list.splice(f.index + 1, 0, el); selectedId = el.id; afterChange('Added ' + cid); return; } }
-      page.elements.push(el); selectedId = el.id; afterChange('Added ' + cid);
-    }
-    function move(id, dir) {
-      const f = findListAndIndex(page.elements, id); if (!f) return;
-      const j = f.index + dir; if (j < 0 || j >= f.list.length) return;
-      snapshot(); const tmp = f.list[f.index]; f.list[f.index] = f.list[j]; f.list[j] = tmp; afterChange('Moved element');
-    }
-    function moveElementBefore(dragId, targetId) {
-      const from = findListAndIndex(page.elements, dragId); const to = findListAndIndex(page.elements, targetId);
-      if (!from || !to || from.list !== to.list) { setStatus('Drag reordering across different parents is not supported in the demo. Use Up and Down inside a parent.'); return; }
-      snapshot(); const item = from.list.splice(from.index, 1)[0]; const target = findListAndIndex(page.elements, targetId); target.list.splice(target.index, 0, item); afterChange('Reordered by drag and drop');
-    }
-
-    function renderLibrary() {
-      const q = (document.getElementById('lib-search').value || '').toLowerCase();
-      const wrap = document.getElementById('library'); wrap.innerHTML = '';
-      const cats = {};
-      for (const c of registry.components) { (cats[c.category] = cats[c.category] || []).push(c); }
-      for (const [cat, items] of Object.entries(cats)) {
-        const h = document.createElement('h3'); h.textContent = cat; wrap.appendChild(h);
-        for (const c of items) {
-          if (q && !(c.label.toLowerCase().includes(q) || c.id.includes(q))) continue;
-          const b = document.createElement('button'); b.type = 'button'; b.className = 'lib-item'; b.draggable = true;
-          b.textContent = c.label + ' (' + c.id + ')';
-          b.title = c.description;
-          b.addEventListener('click', () => addElement(c.id));
-          b.addEventListener('dragstart', (e) => e.dataTransfer.setData('text/component-id', c.id));
-          wrap.appendChild(b);
-        }
-      }
-    }
-
-    function renderInspector() {
-      const wrap = document.getElementById('inspector'); wrap.innerHTML = '';
-      const el = selectedId ? findEl(selectedId) : null;
-      if (!el) { wrap.innerHTML = '<p>Select an element on the canvas to edit its properties. The form is generated from the component schema.</p>'; return; }
-      const def = byId.get(el.componentId);
-      const title = document.createElement('h3'); title.textContent = def ? def.label : el.componentId; wrap.appendChild(title);
-      const idp = document.createElement('p'); idp.textContent = 'ID: ' + el.id; wrap.appendChild(idp);
-      if (def && def.accessibility) { const a = document.createElement('p'); a.textContent = 'Accessibility: ' + def.accessibility; wrap.appendChild(a); }
-      for (const [key, spec] of Object.entries((def && def.props) || {})) {
-        const label = document.createElement('label'); label.textContent = key + ' (' + spec.type + (spec.required ? ', required' : '') + ')'; wrap.appendChild(label);
-        let input;
-        const value = el.props ? el.props[key] : undefined;
-        if (spec.type === 'boolean') { input = document.createElement('input'); input.type = 'checkbox'; input.checked = Boolean(value); input.addEventListener('change', () => updateProp(el, key, input.checked)); }
-        else if (spec.type === 'enum') { input = document.createElement('select'); for (const v of spec.values || []) { const o = document.createElement('option'); o.value = v; o.textContent = v; if (v === value) o.selected = true; input.appendChild(o); } input.addEventListener('change', () => updateProp(el, key, input.value)); }
-        else if (spec.type === 'array' || spec.type === 'object') { input = document.createElement('textarea'); input.rows = 5; input.value = JSON.stringify(value ?? spec.default ?? [], null, 2); input.addEventListener('change', () => { try { updateProp(el, key, JSON.parse(input.value)); } catch { setStatus('Invalid JSON for ' + key + '. Change not saved.'); } }); }
-        else { input = document.createElement(spec.type === 'string' && key === 'html' ? 'textarea' : 'input'); if (input.tagName === 'INPUT') input.type = spec.type === 'number' ? 'number' : 'text'; input.value = value ?? spec.default ?? ''; input.addEventListener('change', () => updateProp(el, key, spec.type === 'number' ? Number(input.value) : input.value)); }
-        wrap.appendChild(input);
-      }
-      const previewLink = document.createElement('p');
-      previewLink.innerHTML = '<a href="/preview/home?token=demo" target="_blank" rel="noreferrer">Open draft preview demo</a>';
-      wrap.appendChild(previewLink);
-    }
-    function updateProp(el, key, value) { snapshot(); el.props = el.props || {}; el.props[key] = value; afterChange('Updated ' + key + ' on ' + el.componentId); }
-
-    document.getElementById('lib-search').addEventListener('input', renderLibrary);
-    document.getElementById('page-title').addEventListener('change', (e) => { snapshot(); page.title = e.target.value; markDirty(); });
-    document.getElementById('page-slug').addEventListener('change', (e) => { snapshot(); page.slug = e.target.value; markDirty(); });
-    document.querySelectorAll('[data-width]').forEach((b) => b.addEventListener('click', () => { document.getElementById('canvas').style.maxWidth = b.getAttribute('data-width'); }));
-    document.getElementById('btn-undo').addEventListener('click', () => { if (!undoStack.length) return setStatus('Nothing to undo.'); redoStack.push(clone(page.elements)); page.elements = undoStack.pop(); afterChange('Undid last change'); });
-    document.getElementById('btn-redo').addEventListener('click', () => { if (!redoStack.length) return setStatus('Nothing to redo.'); undoStack.push(clone(page.elements)); page.elements = redoStack.pop(); afterChange('Redid change'); });
-    document.getElementById('btn-clear').addEventListener('click', () => { if (!confirm('Reset the canvas to the home template? Your saved draft in local storage will be replaced when you save.')) return; snapshot(); page.elements = clone(data.home.elements || []); afterChange('Reset to home template'); });
-    document.getElementById('btn-validate').addEventListener('click', () => {
-      const check = validatePage(page, registry);
-      const findings = auditPage(page);
-      setStatus(check.valid ? 'Validation passed. Audit findings: ' + findings.length + (findings.length ? ' (' + findings.map((f) => f.code).join(', ') + ')' : '') : 'Validation failed:\n' + check.errors.join('\n'));
-    });
-    document.getElementById('btn-save').addEventListener('click', async () => {
-      const check = validatePage(page, registry);
-      if (!check.valid) { setStatus('Cannot save, validation failed:\n' + check.errors.join('\n')); return; }
-      localStorage.setItem(LS_KEY, JSON.stringify(page));
-      try {
-        const res = await fetch('/api/builder/save', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ page }) });
-        const out = await res.json();
-        dirty = false; document.getElementById('unsaved').textContent = '';
-        setStatus('Saved draft locally and to the demo endpoint. Server response: ' + JSON.stringify(out.notice || out));
-      } catch (err) { setStatus('Saved locally. Demo endpoint failed: ' + String(err)); }
-    });
-    document.getElementById('btn-publish').addEventListener('click', async () => {
-      try {
-        const res = await fetch('/api/publish', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ slug: page.slug }) });
-        const out = await res.json();
-        setStatus('Publish result (' + res.status + '): ' + (out.message || JSON.stringify(out)));
-      } catch (err) { setStatus('Publish failed: ' + String(err)); }
-    });
-    document.getElementById('btn-ai').addEventListener('click', async () => {
-      const prompt = document.getElementById('ai-prompt').value.trim();
-      const box = document.getElementById('ai-result'); box.innerHTML = '';
-      if (!prompt) { setStatus('Write an AI prompt first.'); return; }
-      const res = await fetch('/api/ai/generate', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ prompt }) });
-      const out = await res.json();
-      if (!res.ok || !out.plan) { setStatus('AI mock failed: ' + JSON.stringify(out)); return; }
-      const pre = document.createElement('pre'); pre.style.whiteSpace = 'pre-wrap'; pre.textContent = 'Provider: mock (labelled mock, not a real model)\n' + JSON.stringify(out.plan, null, 2); box.appendChild(pre);
-      const apply = document.createElement('button'); apply.type = 'button'; apply.textContent = 'Review done: apply plan';
-      apply.addEventListener('click', () => {
-        const check = validateChangePlan(out.plan, registry);
-        if (!check.valid) { setStatus('Plan rejected by validation:\n' + check.errors.join('\n')); return; }
-        snapshot();
-        for (const op of out.plan.operations) if (op.type === 'add_element' && op.element) page.elements.push(clone(op.element));
-        afterChange('Applied mock AI plan. Review the new elements before saving.');
+    function wireToolbar() {
+      document.getElementById('page-title').addEventListener('change', (e) => { pageMeta.title = e.target.value; markDirty(); });
+      document.getElementById('page-slug').addEventListener('change', (e) => { pageMeta.slug = e.target.value.trim() || 'home'; });
+      document.querySelectorAll('[data-device]').forEach((b) => b.addEventListener('click', () => editor.setDevice(b.getAttribute('data-device'))));
+      document.getElementById('btn-undo').addEventListener('click', () => { editor.UndoManager.undo(); markDirty(); });
+      document.getElementById('btn-redo').addEventListener('click', () => { editor.UndoManager.redo(); markDirty(); });
+      document.getElementById('btn-load').addEventListener('click', async () => {
+        const slug = document.getElementById('page-slug').value.trim() || 'home';
+        try {
+          const page = await client.loadPage(slug);
+          if (!page) { setStatus('No published page found for slug "' + slug + '" in the content API.'); return; }
+          applyPage(page);
+          markClean();
+          setStatus('Loaded page "' + slug + '" from the content API.');
+        } catch (err) { setStatus('Load failed: ' + String(err)); }
       });
-      box.appendChild(apply);
-    });
-    const canvas = document.getElementById('canvas');
-    canvas.addEventListener('dragover', (e) => e.preventDefault());
-    canvas.addEventListener('drop', (e) => { const cid = e.dataTransfer.getData('text/component-id'); if (cid) { e.preventDefault(); addElement(cid); } });
+      document.getElementById('btn-local-draft').addEventListener('click', () => {
+        try {
+          const raw = localStorage.getItem(DRAFT_LOCALSTORAGE_KEY);
+          if (!raw) { setStatus('No local draft backup found.'); return; }
+          applyPage(JSON.parse(raw));
+          setStatus('Loaded the local draft backup. It is not saved on the server until you press Save draft.');
+        } catch { setStatus('Local draft backup could not be parsed.'); }
+      });
+      document.getElementById('btn-reset').addEventListener('click', () => {
+        if (!confirm('Reset the canvas to the bundled fixture home page? Unsaved changes are lost.')) return;
+        applyPage(clone(bundled.home));
+        setStatus('Canvas reset to the fixture home page.');
+      });
+      document.getElementById('btn-validate').addEventListener('click', () => {
+        const page = serializePage();
+        const check = validatePage(page, registryState);
+        const findings = auditPage(page);
+        setStatus(check.valid
+          ? 'Validation passed. Audit findings: ' + findings.length + (findings.length ? ' (' + findings.map((f) => f.code).join(', ') + ')' : '')
+          : 'Validation failed:\n' + check.errors.join('\n'));
+      });
+      document.getElementById('btn-save').addEventListener('click', async () => {
+        const page = serializePage();
+        const check = validatePage(page, registryState);
+        if (!check.valid) { setStatus('Cannot save, validation failed:\n' + check.errors.join('\n')); return; }
+        localStorage.setItem(DRAFT_LOCALSTORAGE_KEY, JSON.stringify(page));
+        storageState.page = page;
+        try {
+          const out = await editor.store();
+          markClean();
+          setStatus('Saved draft through the typo3-api storage adapter. ' + ((out && out.notice) || ''));
+        } catch (err) {
+          setStatus('Saved to the local backup only. API save failed: ' + String(err && err.message ? err.message : err));
+        }
+      });
+      document.getElementById('btn-publish').addEventListener('click', async () => {
+        try {
+          const res = await fetch('/api/publish', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ slug: pageMeta.slug }) });
+          const out = await res.json();
+          setStatus('Publish result (' + res.status + '): ' + (out.message || JSON.stringify(out)));
+        } catch (err) { setStatus('Publish failed: ' + String(err)); }
+      });
+      const traitsBox = document.getElementById('traits-box');
+      const stylesBox = document.getElementById('styles-box');
+      document.getElementById('tab-traits').addEventListener('click', (e) => {
+        traitsBox.hidden = false; stylesBox.hidden = true;
+        e.target.classList.add('active'); document.getElementById('tab-styles').classList.remove('active');
+      });
+      document.getElementById('tab-styles').addEventListener('click', (e) => {
+        stylesBox.hidden = false; traitsBox.hidden = true;
+        e.target.classList.add('active'); document.getElementById('tab-traits').classList.remove('active');
+      });
+    }
 
-    renderLibrary(); renderCanvas(); renderInspector();
+
+    // ---- New element type form -------------------------------------------
+    function addFieldRow() {
+      const wrap = document.getElementById('net-fields');
+      const row = document.createElement('div');
+      row.className = 'net-field-row';
+      const nameInput = document.createElement('input');
+      nameInput.type = 'text'; nameInput.placeholder = 'field name (camelCase)'; nameInput.setAttribute('data-net', 'name');
+      const typeSelect = document.createElement('select');
+      typeSelect.setAttribute('data-net', 'type');
+      for (const t of ALLOWED_FIELD_TYPES) { const o = document.createElement('option'); o.value = t; o.textContent = t; typeSelect.appendChild(o); }
+      const top = document.createElement('div'); top.className = 'row'; top.appendChild(nameInput); top.appendChild(typeSelect);
+      const defInput = document.createElement('input');
+      defInput.type = 'text'; defInput.placeholder = 'default value (optional)'; defInput.setAttribute('data-net', 'default');
+      const valuesInput = document.createElement('input');
+      valuesInput.type = 'text'; valuesInput.placeholder = 'enum values, comma separated'; valuesInput.setAttribute('data-net', 'values');
+      const reqLabel = document.createElement('label');
+      const reqInput = document.createElement('input');
+      reqInput.type = 'checkbox'; reqInput.setAttribute('data-net', 'required');
+      reqLabel.appendChild(reqInput); reqLabel.appendChild(document.createTextNode(' required'));
+      const remove = document.createElement('button');
+      remove.type = 'button'; remove.textContent = 'Remove field';
+      remove.addEventListener('click', () => row.remove());
+      row.appendChild(top); row.appendChild(defInput); row.appendChild(valuesInput); row.appendChild(reqLabel); row.appendChild(remove);
+      wrap.appendChild(row);
+    }
+
+    function readFieldRows() {
+      return [...document.querySelectorAll('#net-fields .net-field-row')].map((row) => {
+        const get = (key) => row.querySelector('[data-net="' + key + '"]');
+        const field = { name: get('name').value.trim(), type: get('type').value, required: get('required').checked };
+        const def = get('default').value;
+        if (def !== '') field.default = field.type === 'number' ? Number(def) : field.type === 'boolean' ? def === 'true' : def;
+        if (field.type === 'enum') field.values = get('values').value.split(',').map((v) => v.trim()).filter(Boolean);
+        return field;
+      });
+    }
+
+    function wireNewElementTypeForm() {
+      addFieldRow();
+      document.getElementById('net-add-field').addEventListener('click', addFieldRow);
+      document.getElementById('net-create').addEventListener('click', async () => {
+        const result = document.getElementById('net-result');
+        const payload = {
+          id: document.getElementById('net-id').value.trim(),
+          label: document.getElementById('net-label').value.trim(),
+          category: document.getElementById('net-category').value.trim() || 'custom',
+          fields: readFieldRows(),
+        };
+        try {
+          const type = await client.createElementType(payload);
+          if (!registryById().has(type.id)) {
+            const def = elementTypeToRegistryComponent(type);
+            registryState.components.push(def);
+            registerComponentType(def);
+          }
+          result.textContent = 'Created element type ' + type.id + '. TYPO3 CType: ' + type.ctype + '. Its block is now in the Blocks panel.';
+          setStatus('Element type ' + type.id + ' registered through the API and added to the builder.');
+        } catch (err) {
+          const details = err && err.body && err.body.error && err.body.error.details ? '\n' + err.body.error.details.join('\n') : '';
+          result.textContent = 'Create failed: ' + String(err && err.message ? err.message : err) + details;
+        }
+      });
+    }
+
+    // ---- AI panel (mock provider, labelled) -------------------------------
+    function wireAiPanel() {
+      document.getElementById('btn-ai').addEventListener('click', async () => {
+        const prompt = document.getElementById('ai-prompt').value.trim();
+        const box = document.getElementById('ai-result'); box.innerHTML = '';
+        if (!prompt) { setStatus('Write an AI prompt first.'); return; }
+        const res = await fetch('/api/ai/generate', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ prompt }) });
+        const out = await res.json();
+        if (!res.ok || !out.plan) { setStatus('AI mock failed: ' + JSON.stringify(out)); return; }
+        const pre = document.createElement('pre'); pre.style.whiteSpace = 'pre-wrap';
+        pre.textContent = 'Provider: mock (labelled mock, not a real model)\n' + JSON.stringify(out.plan, null, 2);
+        box.appendChild(pre);
+        const apply = document.createElement('button'); apply.type = 'button'; apply.textContent = 'Review done: apply plan';
+        apply.addEventListener('click', () => {
+          const check = validateChangePlan(out.plan, registryState);
+          if (!check.valid) { setStatus('Plan rejected by validation:\n' + check.errors.join('\n')); return; }
+          for (const op of out.plan.operations) {
+            if (op.type === 'add_element' && op.element) {
+              editor.getWrapper().append(pageToGrapesComponents({ elements: [clone(op.element)] }, registryState));
+            }
+          }
+          markDirty();
+          setStatus('Applied mock AI plan. Review the new elements before saving.');
+        });
+        box.appendChild(apply);
+      });
+    }
+
+    // ---- Bootstrap ----------------------------------------------------------
+    (async () => {
+      try {
+        // Element types from the API win over the bundled registry copy.
+        try {
+          const apiTypes = await client.loadElementTypes();
+          if (Array.isArray(apiTypes) && apiTypes.length) {
+            const known = registryById();
+            for (const t of apiTypes) {
+              if (!known.has(t.id)) registryState.components.push(elementTypeToRegistryComponent(t));
+            }
+          }
+        } catch { /* demo fallback: bundled registry only */ }
+        initEditor();
+        wireToolbar();
+        wireNewElementTypeForm();
+        wireAiPanel();
+        await loadInitialPage();
+        markClean();
+        setStatus('Builder ready. Blocks are TYPO3 core element types, traits are their fields. Demo API storage: saves go to the demo endpoint in this app.');
+      } catch (err) {
+        setStatus('Builder failed to start: ' + String(err && err.message ? err.message : err));
+      }
+    })();
   </script>
 </BaseLayout>
