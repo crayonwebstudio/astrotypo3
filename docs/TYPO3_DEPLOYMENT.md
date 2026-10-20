@@ -66,10 +66,10 @@ Everything lives in `apps/typo3-cms` in this repository:
   repositories with `symlink: false`. The site package was removed on
   20 October 2026: HTTP routing for the API belongs to the extension
   itself (its `ApiMiddleware`), and a second dispatch layer in the
-  deployment would have conflicted with it. No `composer.lock` is
-  committed (no local PHP existed when the project was scaffolded), so
-  the image build resolves dependencies with `composer update`.
-  Committing a lock file is a listed follow-up.
+  deployment would have conflicted with it. Update (polish pass,
+  20 October 2026): a `composer.lock` is now committed (TYPO3 13.4.36,
+  generated with Composer 2.10.3 on PHP 8.3), so the image build runs
+  `composer install` from the lock instead of `composer update`.
 - `public/index.php`, `public/typo3/index.php`: standard TYPO3 13
   composer mode entry points.
 - `public/.htaccess`: existing files and directories are served
@@ -261,9 +261,11 @@ nothing twice, reported the four `tx_astrobuilder_*` tables, and
    API responses exactly; page titles come from the TYPO3 page
    records). The Astro demo API routes are unchanged and still answer
    for the builder demo mode. Full audit: `docs/GAP_AUDIT.md`.
-4. No `composer.lock` is committed, so image builds re-resolve TYPO3
-   patch versions. Generate and commit a lock file from a machine with
-   PHP 8.3 and Composer before calling this reproducible.
+4. Closed (polish pass, 20 October 2026): `composer.lock` is committed
+   and the image build installs from it (TYPO3 13.4.36); builds no
+   longer re-resolve patch versions. A clean local `composer install`
+   from the lock was verified before the redeployment
+   `uoipzrrpvgwbqocyxhkysnlq` shipped it.
 5. The database is SQLite. That is a deliberate staging choice and
    matches the verified local setup; production should move to MySQL
    or MariaDB (the image already ships `pdo_mysql`).
