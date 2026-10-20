@@ -1,0 +1,7 @@
+---
+const { element, preview = false } = Astro.props;
+const p = element?.props ?? {};
+const Tag = ('h' + Math.min(6, Math.max(1, Number(p.level ?? 2)))) as any;
+const attrs = preview ? { 'data-astro-builder-id': element.id, class: 'preview-editable' } : {};
+---
+<Tag {...attrs} style={`text-align: ${p.align ?? 'left'}`}>{p.text ?? ''}</Tag>
