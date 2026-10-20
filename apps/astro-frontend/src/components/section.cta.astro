@@ -1,0 +1,11 @@
+---
+const { element, preview = false } = Astro.props;
+const p = element?.props ?? {};
+const attrs = preview ? { 'data-astro-builder-id': element.id, class: 'preview-editable' } : {};
+---
+
+<section {...attrs} style="padding: var(--space-lg) 0;"><div class="container card" style="text-align:center;">
+  <h2>{p.heading}</h2>
+  {p.text ? <p>{p.text}</p> : null}
+  {p.ctaLabel ? <p><a class="btn btn-primary" href={p.ctaHref ?? '/'}>{p.ctaLabel}</a></p> : null}
+</div></section>
