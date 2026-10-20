@@ -3,6 +3,7 @@
   "components": [
     {
       "id": "layout.container",
+      "typo3Ctype": "astro_builder_layout_container",
       "version": "1.0.0",
       "category": "layout",
       "label": "Container",
@@ -53,6 +54,7 @@
     },
     {
       "id": "layout.columns",
+      "typo3Ctype": "astro_builder_layout_columns",
       "version": "1.0.0",
       "category": "layout",
       "label": "Columns",
@@ -83,6 +85,7 @@
     },
     {
       "id": "content.heading",
+      "typo3Ctype": "header",
       "version": "1.0.0",
       "category": "content",
       "label": "Heading",
@@ -112,6 +115,7 @@
     },
     {
       "id": "content.rich-text",
+      "typo3Ctype": "text",
       "version": "1.0.0",
       "category": "content",
       "label": "Rich Text",
@@ -136,6 +140,7 @@
     },
     {
       "id": "content.image",
+      "typo3Ctype": "textpic",
       "version": "1.0.0",
       "category": "content",
       "label": "Image",
@@ -169,6 +174,7 @@
     },
     {
       "id": "content.button",
+      "typo3Ctype": "astro_builder_content_button",
       "version": "1.0.0",
       "category": "content",
       "label": "Button",
@@ -199,6 +205,7 @@
     },
     {
       "id": "content.divider",
+      "typo3Ctype": "div",
       "version": "1.0.0",
       "category": "content",
       "label": "Divider",
@@ -219,6 +226,7 @@
     },
     {
       "id": "section.hero",
+      "typo3Ctype": "astro_builder_section_hero",
       "version": "1.0.0",
       "category": "section",
       "label": "Hero",
@@ -255,6 +263,7 @@
     },
     {
       "id": "section.feature-grid",
+      "typo3Ctype": "astro_builder_section_feature_grid",
       "version": "1.0.0",
       "category": "section",
       "label": "Feature Grid",
@@ -287,6 +296,7 @@
     },
     {
       "id": "section.image-text",
+      "typo3Ctype": "astro_builder_section_image_text",
       "version": "1.0.0",
       "category": "section",
       "label": "Image and Text",
@@ -321,6 +331,7 @@
     },
     {
       "id": "section.testimonials",
+      "typo3Ctype": "astro_builder_section_testimonials",
       "version": "1.0.0",
       "category": "section",
       "label": "Testimonials",
@@ -346,6 +357,7 @@
     },
     {
       "id": "section.faq",
+      "typo3Ctype": "astro_builder_section_faq",
       "version": "1.0.0",
       "category": "section",
       "label": "FAQ",
@@ -370,6 +382,7 @@
     },
     {
       "id": "section.cta",
+      "typo3Ctype": "astro_builder_section_cta",
       "version": "1.0.0",
       "category": "section",
       "label": "Call to Action",
@@ -398,6 +411,7 @@
     },
     {
       "id": "navigation.header",
+      "typo3Ctype": "astro_builder_navigation_header",
       "version": "1.0.0",
       "category": "navigation",
       "label": "Header",
@@ -431,6 +445,7 @@
     },
     {
       "id": "navigation.footer",
+      "typo3Ctype": "astro_builder_navigation_footer",
       "version": "1.0.0",
       "category": "navigation",
       "label": "Footer",
