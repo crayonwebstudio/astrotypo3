@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 defined('TYPO3') or die();
-// Routes for the content API are registered through the site configuration
-// and the middleware stack in Configuration/RequestMiddlewares.php.
-// No frontend plugin is registered on purpose: rendering is done by Astro.
+// The content, element type and builder APIs are served by the ApiMiddleware
+// in the frontend stack (Configuration/RequestMiddlewares.php), which
+// intercepts /api/* paths before the page resolver and dispatches to the
+// API controllers. No frontend plugin is registered on purpose: rendering
+// is done by Astro.
