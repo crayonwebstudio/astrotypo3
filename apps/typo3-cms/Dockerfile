@@ -1,8 +1,8 @@
 # AstroTYPO3 TYPO3 13 instance.
 # Build context is the repository root (Coolify). The TYPO3 project lives in
 # apps/typo3-cms and mirrors the repository layout, because its composer.json
-# uses path repositories: ../../packages/typo3-extension and
-# packages/astrotypo3-site, plus packages/shared-contract at runtime.
+# uses a path repository for the extension: ../../packages/typo3-extension,
+# plus packages/shared-contract at runtime.
 FROM php:8.3-apache
 
 ENV COMPOSER_ALLOW_SUPERUSER=1 \
