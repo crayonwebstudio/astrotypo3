@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AiChangePlan",
+  "type": "object",
+  "required": [
+    "operations"
+  ],
+  "properties": {
+    "summary": {
+      "type": "string"
+    },
+    "operations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "enum": [
+              "create_page",
+              "update_page_metadata",
+              "add_element",
+              "update_element_props",
+              "move_element",
+              "duplicate_element",
+              "remove_element",
+              "apply_section_template",
+              "apply_page_template",
+              "suggest_seo",
+              "generate_image_request"
+            ]
+          }
+        }
+      }
+    }
+  }
+}
