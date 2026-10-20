@@ -161,3 +161,58 @@ cd apps/astro-frontend && npm install && npm test
 - The API middleware dispatches to controllers directly instead of registering Extbase or site routes; this is deliberate for a headless API surface, but it means TYPO3 route enhancers and backend module integration do not apply to these paths
 - Verified on SQLite only; the PDO based TCA registration also covers the `pdo_mysql` and `mysqli` configurations, but that path was not executed here
 - The test instance helper scripts (`make_tokens.php`, `maptest.php`, `tcatest*.php`, `dbtest.php`) live in the local test project only and are not part of the repository
+
+## 4. Slug convention (added 20 October 2026, from the live deployment)
+
+Blocker reported from the live instance at https://typo3.woodwolfdigital.com: `GET /api/content/v1/registry` and `/templates` returned 200 and draft without token returned 401, but `GET /api/content/v1/pages/about` and `pages/home` returned the extension JSON 404 "Published page not found." The seeded pages are stored with slugs `/` (root, uid 1) and `/about` (uid 2), clients request `home` and `about`, and the encoded slash form (`pages/%2Fabout`) is rejected by Apache before PHP on that stack, so clients cannot send the stored form either.
+
+Convention implemented (canonical form is now documented in `docs/CONTENT_API.md`): clients send `pages/{slug}` with the slug trimmed of slashes; `home`, an empty slug and `/` all mean the root page; any other value resolves as `/` plus the trimmed value against the `pages.slug` column.
+
+Implementation, one normalization point plus its application at every slug resolution site:
+
+- `PageContentService::normalizeSlug()` is the single normalizer: trim whitespace and slashes; `""` and `home` map to `/`; everything else becomes `/` plus the trimmed value (nested slugs keep their inner slashes, trailing slash dropped)
+- `PageContentService::findBySlug()` normalizes before the lookup, so published and draft reads accept all forms and responses always carry the stored slug
+- `ContentApiController::draftAction()` normalizes before token verification, so a preview token minted for the canonical slug `/` validates for `home` and empty requests too
+- `ApiMiddleware` builder save verifies the token against the normalized body slug, and `BuilderApiController::resolvePageUid()` normalizes before its slug lookup; a save payload with slug `home` therefore targets the root page
+- The middleware also accepts the bare `/api/content/v1/pages` path (no trailing slash) as the root page
+
+Second defect found by this work, reproduced locally first: the local About page seeded through DataHandler was created `hidden = 1`, and the page lookups silently inherited TYPO3's default QueryBuilder restrictions, which exclude hidden pages. That accidentally matched published semantics but broke draft reads of hidden pages and the builder save slug lookup. Restrictions are now explicit in `PageContentService` and `BuilderApiController::resolvePageUid`: default restrictions removed, `DeletedRestriction` added, and published reads add an explicit `hidden = 0` condition while draft reads do not. Proven at service level while the page was still hidden: `findPublishedBySlug('about')` returned null and `findDraftBySlug('about')` returned page-2, both correct.
+
+Local verification (test instance seeded to mirror live: uid 1 slug `/`, uid 2 slug `/about`, page 2 unhidden after the draft semantics check above; server `php -S localhost:8080`):
+
+| Request | Result |
+|---|---|
+| `GET /api/content/v1/pages/home` | 200, page-1, slug `/`, 11 elements |
+| `GET /api/content/v1/pages/about` | 200, page-2, slug `/about` |
+| `GET /api/content/v1/pages//about` (double slash, `--path-as-is`) | 200, page-2 |
+| `GET /api/content/v1/pages/%2Fabout` | 200 locally (the local PHP server accepts the encoded form; Apache on the live stack rejects it, which is why the trimmed form is canonical) |
+| `GET /api/content/v1/pages/%2F`, `pages/`, `pages` | 200, root page |
+| `GET /api/content/v1/pages/does-not-exist` and `pages/home/extra` | 404 JSON `not_found` |
+| `GET /api/content/v1/draft/home` and `draft/about` without token | 401 JSON |
+| `GET /api/content/v1/draft/home` with a token minted for `/` | 200, page-1 draft with elements |
+| `POST /api/builder/v1/save` with body slug `home` and the token minted for `/` | 200 `saved`, response page is page-1 with slug `/`; pages count stayed 2 and live tt_content count stayed 11 (update in place, nothing created or deleted) |
+
+`php -l` passes on all four changed files (`PageContentService`, `ContentApiController`, `BuilderApiController`, `ApiMiddleware`). No Astro changes were needed for this fix; the convention is server side.
+
+## 5. Independent re-verification and the round-trip fix (20 October 2026, final integration pass)
+
+The full suite above was re-run independently against the local instance during the final integration pass, with one new defect found and fixed:
+
+Defect: a page read from TYPO3 could not be saved back unchanged. Elements that come from unmanaged core `tt_content` records (no props row) get their props from native fields, and that mapping produced contract-invalid props: `content.rich-text` gained a `heading` prop that its schema does not declare, and `content.heading` carried `align: ""` from an empty `header_position`, outside its enum. A save of the read-back payload failed with 422 (`unknown prop`, `invalid enum value`).
+
+Fix: `ContentElementMapper` now passes native-field props through `schemaSafeProps()`, which filters them against the declared component schema: undeclared props are dropped, and enum values outside the declared set fall back to the schema default (or are dropped when no valid default exists). Props from the builder props store are exact and are never filtered.
+
+Re-run results after the fix:
+
+| Check | Result |
+|---|---|
+| `php -l` on all extension PHP files | 28 files, 0 failed |
+| `GET /api/content/v1/pages/home` | 200, root page with elements, native props now schema safe (heading `align: "left"`, rich-text without the stray `heading` prop) |
+| `GET /api/content/v1/pages/about` | 200 |
+| `GET /api/content/v1/pages/does-not-exist` | 404 JSON `not_found` |
+| `GET /api/content/v1/registry`, `/templates` | 200, 15 components |
+| `GET /api/content/v1/draft/home` without token / with token | 401 / 200 |
+| Builder save round trip: read home (11 elements), append one new `content.heading`, POST `/api/builder/v1/save` with token | 200 `saved`; `tt_content` count 13 to 14; new record uid 14, pid 1, CType `header`; read back shows 12 elements with `ttcontent-14` and its exact props |
+| `POST /api/v1/element-types` (`custom.integration-check`) with token | 201, ctype `astro_builder_custom_integration_check` |
+| `POST /api/v1/element-types` duplicate / without token | 422 / 401 |
+| `GET /api/v1/element-types` | 200, 17 types (15 core + 2 custom) |
