@@ -12,7 +12,7 @@ ENV COMPOSER_ALLOW_SUPERUSER=1 \
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
       libzip-dev libicu-dev libpng-dev libjpeg-dev libfreetype6-dev \
-      libxml2-dev libsqlite3-dev sqlite3 unzip git imagemagick \
+      libxml2-dev libsqlite3-dev libonig-dev sqlite3 unzip git imagemagick \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install -j"$(nproc)" gd intl zip pdo_mysql pdo_sqlite mbstring xml opcache exif \
     && pecl install apcu \
