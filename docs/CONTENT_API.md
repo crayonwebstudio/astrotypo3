@@ -15,6 +15,19 @@ Base path: `/api/content/v1`. Implemented in TYPO3 (`ContentApiController`) for 
 | `POST /ai/generate` and `POST /ai/edit` | Editor auth in TYPO3, demo in Astro | Mock labelled change plan, validated against the allowlist |
 | `POST /publish` | Editor auth | Job status. Demo adapter returns an honest error when no webhook is configured |
 
+## Slug convention
+
+TYPO3 stores page slugs with a leading slash: the site root page is `/`, other pages are `/about`, `/about/team` and so on. Clients must not send that stored form: on the production Apache stack the URL encoded slash form (`/pages/%2Fabout`) is rejected before PHP runs.
+
+Canonical client form: `GET /pages/{slug}` with the slug trimmed of slashes.
+
+- `home` means the root page. An empty slug (`/pages/` or `/pages`) and `/` also mean the root page.
+- Any other value is resolved as `/` plus the trimmed value against the stored slug: `about` reads the page stored as `/about`, `about/team` reads `/about/team`.
+- The API normalizes every accepted form in one place (`PageContentService::normalizeSlug`), and the response always carries the stored slug (`/`, `/about`).
+- Preview tokens are minted and verified against the normalized slug, so one token for the root page validates for `home`, `` and `/` alike. The same applies to the builder save endpoint: a save payload may carry slug `home` for the root page.
+
+Examples: `pages/home` returns the root page, `pages/about` returns the About page, `pages//about` (double slash, non-encoded) also resolves, and an unknown trimmed slug returns the JSON 404.
+
 ## Page JSON
 
 Follows `packages/shared-contract/page.schema.json`: `id`, `slug`, `title`, `status` (`published` or `draft`), `locale`, `seo` and `elements`. Each element has `id`, `componentId`, `props` and optional `children`.
