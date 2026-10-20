@@ -4,6 +4,6 @@ import Renderer from '../components/Renderer.astro';
 import { getPublishedPage } from '../lib/content.mjs';
 const page: any = await getPublishedPage('home');
 ---
-<BaseLayout title={page?.seo?.title ?? 'AstroTYPO3'} description={page?.seo?.description ?? ''} canonical={page?.seo?.canonical ?? ''}>
+<BaseLayout title={page?.seo?.title ?? (page?.title ? `${page.title}: AstroTYPO3` : 'AstroTYPO3')} description={page?.seo?.description ?? ''} canonical={page?.seo?.canonical ?? ''}>
   {page ? page.elements.map((el: any) => <Renderer element={el} />) : <div class="container"><h1>Page not found</h1></div>}
 </BaseLayout>
