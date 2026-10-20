@@ -47,8 +47,10 @@ final class ContentElementMapper
         'div' => 'content.divider',
     ];
 
-    public function __construct(private readonly ComponentRegistryService $registryService)
-    {
+    public function __construct(
+        private readonly ComponentRegistryService $registryService,
+        private readonly ?ElementTypeRegistryService $elementTypeRegistry = null,
+    ) {
     }
 
     public function componentIdForCType(string $ctype): string
@@ -56,6 +58,13 @@ final class ContentElementMapper
         foreach ($this->registryService->getRegistry()['components'] ?? [] as $component) {
             if (is_array($component) && ($component['typo3Ctype'] ?? '') === $ctype && isset($component['id'])) {
                 return (string)$component['id'];
+            }
+        }
+        if ($this->elementTypeRegistry !== null) {
+            foreach ($this->elementTypeRegistry->listTypes() as $type) {
+                if (($type['source'] ?? '') === 'custom' && ($type['ctype'] ?? '') === $ctype) {
+                    return (string)$type['id'];
+                }
             }
         }
         return self::CORE_CTYPE_TO_COMPONENT[$ctype] ?? 'content.rich-text';
@@ -131,7 +140,7 @@ final class ContentElementMapper
         // Builder managed records of this page: linked through a props row.
         $managedUids = [];
         $propsConnection = $connectionPool->getConnectionForTable('tx_astrobuilder_element');
-        foreach ($propsConnection->select(['tt_content_uid'], 'tx_astrobuilder_element', ['page_uid' => $pageUid]) as $row) {
+        foreach ($propsConnection->select(['tt_content_uid'], 'tx_astrobuilder_element', ['page_uid' => $pageUid])->fetchAllAssociative() as $row) {
             $uid = (int)($row['tt_content_uid'] ?? 0);
             if ($uid > 0) {
                 $managedUids[$uid] = true;
@@ -139,7 +148,7 @@ final class ContentElementMapper
         }
         $existingOnPage = [];
         $contentConnection = $connectionPool->getConnectionForTable('tt_content');
-        foreach ($contentConnection->select(['uid'], 'tt_content', ['pid' => $pageUid, 'deleted' => 0]) as $row) {
+        foreach ($contentConnection->select(['uid'], 'tt_content', ['pid' => $pageUid, 'deleted' => 0])->fetchAllAssociative() as $row) {
             $existingOnPage[(int)$row['uid']] = true;
         }
 
@@ -186,12 +195,14 @@ final class ContentElementMapper
         }
 
         // Store the full props per element, keyed by the real tt_content uid.
+        $resolvedUids = [];
         foreach ($elements as $index => $element) {
             $placeholder = $placeholders[$index];
             $contentUid = is_int($placeholder) ? $placeholder : (int)($dataHandler->substNEWwithIDs[$placeholder] ?? 0);
             if ($contentUid <= 0) {
                 throw new \RuntimeException('DataHandler did not assign a uid for element ' . $element->id);
             }
+            $resolvedUids[$index] = $contentUid;
             $props = $element->props;
             if ($element->children !== []) {
                 $props['_children'] = array_map(static fn (Element $child): array => $child->toArray(), $element->children);
@@ -215,6 +226,14 @@ final class ContentElementMapper
             }
         }
 
+        // DataHandler renumbers the sorting field of new records with its
+        // own small sequential values, which scrambles the payload order
+        // relative to the values written above. Normalize the sorting of
+        // the saved records to the payload order afterwards.
+        foreach ($resolvedUids as $index => $contentUid) {
+            $contentConnection->update('tt_content', ['sorting' => ($index + 1) * 128], ['uid' => $contentUid]);
+        }
+
         return $this->elementsForPage($pageUid, true);
     }
 
@@ -225,7 +244,10 @@ final class ContentElementMapper
         $connection = $connectionPool->getConnectionForTable('tx_astrobuilder_element');
         $map = [];
         try {
-            $rows = $connection->select(['tt_content_uid', 'props'], 'tx_astrobuilder_element', ['page_uid' => $pageUid]);
+            // DBAL 4: Connection::select() returns a Result object, which is
+            // not iterable; fetchAllAssociative() is required (a plain foreach
+            // over the Result silently yields no rows).
+            $rows = $connection->select(['tt_content_uid', 'props'], 'tx_astrobuilder_element', ['page_uid' => $pageUid])->fetchAllAssociative();
         } catch (\Throwable) {
             return [];
         }
