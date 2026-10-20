@@ -118,7 +118,7 @@ final class ContentElementMapper
                     }
                 }
             } else {
-                $props = $this->nativeProps($row, $componentId, $uid);
+                $props = $this->schemaSafeProps($componentId, $this->nativeProps($row, $componentId, $uid));
             }
             $elements[] = new Element('ttcontent-' . $uid, $componentId, is_array($props) ? $props : [], $children);
         }
@@ -281,6 +281,45 @@ final class ContentElementMapper
             'content.divider' => ['style' => 'line'],
             default => $this->genericProps($header, $bodytext),
         };
+    }
+
+    /**
+     * Native tt_content fields do not always line up with the component
+     * contract: a text record carries its header outside the rich-text
+     * schema, and header_position can be empty where the schema expects an
+     * enum member. Props read from native fields are therefore filtered
+     * against the declared component schema, so a page read from TYPO3 can
+     * always be saved back through the validating builder API unchanged.
+     * Props from the builder props store are exact and never filtered.
+     *
+     * @param array<string, mixed> $props
+     * @return array<string, mixed>
+     */
+    private function schemaSafeProps(string $componentId, array $props): array
+    {
+        $component = $this->registryService->getComponent($componentId);
+        $schema = is_array($component) && is_array($component['props'] ?? null) ? $component['props'] : null;
+        if ($schema === null) {
+            return $props;
+        }
+        $safe = [];
+        foreach ($props as $name => $value) {
+            if (!isset($schema[$name]) || !is_array($schema[$name])) {
+                continue;
+            }
+            if (($schema[$name]['type'] ?? '') === 'enum') {
+                $values = $schema[$name]['values'] ?? [];
+                if (!in_array($value, $values, true)) {
+                    $default = $schema[$name]['default'] ?? null;
+                    if ($default === null || !in_array($default, $values, true)) {
+                        continue;
+                    }
+                    $value = $default;
+                }
+            }
+            $safe[$name] = $value;
+        }
+        return $safe;
     }
 
     /** @return array<string, mixed> */
