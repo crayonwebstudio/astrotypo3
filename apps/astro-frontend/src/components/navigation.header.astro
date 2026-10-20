@@ -1,0 +1,10 @@
+---
+const { element, preview = false } = Astro.props;
+const p = element?.props ?? {};
+const attrs = preview ? { 'data-astro-builder-id': element.id, class: 'preview-editable' } : {};
+---
+
+<header {...attrs} class="site-header"><div class="container">
+  <a class="brand" href="/">{p.brand ?? 'AstroTYPO3'}</a>
+  <nav aria-label="Main"><ul>{(p.links ?? []).map((link: any) => <li><a href={link.href}>{link.label}</a></li>)}</ul></nav>
+</div></header>
