@@ -1,0 +1,24 @@
+---
+import '../styles/global.css';
+const { title = 'AstroTYPO3', description = '', canonical = '', draft = false } = Astro.props;
+const site = Astro.site ? Astro.site.toString().replace(/\/$/, '') : 'https://astrotypo3.woodwolfdigital.com';
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    {description ? <meta name="description" content={description} /> : null}
+    {canonical ? <link rel="canonical" href={canonical} /> : null}
+    <meta property="og:title" content={title} />
+    {description ? <meta property="og:description" content={description} /> : null}
+    <meta property="og:type" content="website" />
+    {draft ? <meta name="robots" content="noindex, nofollow" /> : null}
+  </head>
+  <body>
+    <a href="#main" style="position:absolute; left:-9999px; top:auto; width:1px; height:1px; overflow:hidden;" onfocus="this.style.position='static'; this.style.width='auto'; this.style.height='auto';">Skip to content</a>
+    {draft ? <div class="draft-badge">DRAFT PREVIEW: this content is not published</div> : null}
+    <main id="main"><slot /></main>
+  </body>
+</html>
