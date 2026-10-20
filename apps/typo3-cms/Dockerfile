@@ -19,6 +19,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && docker-php-ext-enable apcu \
     && printf 'apc.enable_cli=1\nmemory_limit=512M\nmax_execution_time=240\nmax_input_vars=1500\npost_max_size=100M\nupload_max_filesize=100M\n' > /usr/local/etc/php/conf.d/typo3.ini \
     && a2enmod rewrite headers \
+    && printf 'RedirectMatch 301 ^/typo3$ https://typo3.woodwolfdigital.com/typo3/\nAllowEncodedSlashes NoDecode\n' > /etc/apache2/conf-available/typo3-redirect.conf \
+    && a2enconf typo3-redirect \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=composer:2 /usr/bin/composer /usr/local/bin/composer
