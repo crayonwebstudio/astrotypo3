@@ -9,3 +9,7 @@ services:
     public: true
   Crayonwebstudio\AstroBuilder\Controller\BuilderApiController:
     public: true
+  # Default AI provider is the labelled mock. A site package can override
+  # this alias with OpenAiCompatibleProvider and a server side API key.
+  Crayonwebstudio\AstroBuilder\Ai\AiProviderInterface:
+    alias: Crayonwebstudio\AstroBuilder\Ai\MockProvider
