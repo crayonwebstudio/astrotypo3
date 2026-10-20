@@ -7,4 +7,5 @@ dist/
 *.log
 .DS_Store
 apps/astro-frontend/data/saved-pages.json
+apps/astro-frontend/data/element-types.json
 var/
