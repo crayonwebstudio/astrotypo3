@@ -1,0 +1,44 @@
+---
+import Fallback from './_fallback.astro';
+import C0 from './layout.container.astro';
+import C1 from './layout.columns.astro';
+import C2 from './content.heading.astro';
+import C3 from './content.rich-text.astro';
+import C4 from './content.image.astro';
+import C5 from './content.button.astro';
+import C6 from './content.divider.astro';
+import C7 from './section.hero.astro';
+import C8 from './section.feature-grid.astro';
+import C9 from './section.image-text.astro';
+import C10 from './section.testimonials.astro';
+import C11 from './section.faq.astro';
+import C12 from './section.cta.astro';
+import C13 from './navigation.header.astro';
+import C14 from './navigation.footer.astro';
+const { element, preview = false } = Astro.props;
+const map: Record<string, any> = {
+  'layout.container': C0,
+  'layout.columns': C1,
+  'content.heading': C2,
+  'content.rich-text': C3,
+  'content.image': C4,
+  'content.button': C5,
+  'content.divider': C6,
+  'section.hero': C7,
+  'section.feature-grid': C8,
+  'section.image-text': C9,
+  'section.testimonials': C10,
+  'section.faq': C11,
+  'section.cta': C12,
+  'navigation.header': C13,
+  'navigation.footer': C14
+};
+const Component = element ? map[element.componentId] : null;
+---
+{Component ? (
+  <Component element={element} preview={preview}>
+    {element.children ? element.children.map((child: any) => <Astro.self element={child} preview={preview} />) : null}
+  </Component>
+) : (
+  <Fallback element={element} preview={preview} />
+)}
