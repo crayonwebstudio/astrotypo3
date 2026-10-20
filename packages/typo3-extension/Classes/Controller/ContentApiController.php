@@ -34,6 +34,9 @@ final class ContentApiController
 
     public function draftAction(ServerRequestInterface $request, string $slug): ResponseInterface
     {
+        // Tokens are scoped to the canonical (normalized) slug, so a token
+        // minted for the root page "/" also validates for "home" and "".
+        $slug = PageContentService::normalizeSlug($slug);
         $token = (string)($request->getHeaderLine('x-preview-token'));
         if ($token === '' || !$this->previewTokenService->verifyToken($token, $slug)) {
             return $this->error(401, 'unauthorized', 'A valid preview token is required for draft content.');
