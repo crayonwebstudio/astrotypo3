@@ -11,7 +11,8 @@ import {
 } from '../src/lib/elementTypes.mjs';
 import {
   TYPO3_API_BASE, typo3ApiUrl, pageToGrapesComponents, grapesComponentsToPage,
-  elementToComponentData, createTypo3ApiClient,
+  elementToComponentData, createTypo3ApiClient, resolveApiBase,
+  typo3HostFromContentApiUrl, builderSavePath,
 } from '../src/lib/typo3Storage.mjs';
 
 const registry = JSON.parse(readFileSync(new URL('../src/data/registry.json', import.meta.url), 'utf8'));
@@ -204,4 +205,62 @@ test('storage client targets the contract endpoints and the config base URL', ()
     assert.equal(missing, null, '404 page loads as null');
     assert.equal(calls[0][0], 'https://typo3.example/api/v1/element-types');
   })();
+});
+
+test('builder config resolution: injected config wins, then window override, then constant', () => {
+  assert.equal(
+    typo3HostFromContentApiUrl('https://typo3.woodwolfdigital.com/api/content/v1'),
+    'https://typo3.woodwolfdigital.com',
+    'content API URL is reduced to the TYPO3 host root',
+  );
+  assert.equal(typo3HostFromContentApiUrl('https://typo3.woodwolfdigital.com/api/content/v1/'), 'https://typo3.woodwolfdigital.com');
+  assert.equal(typo3HostFromContentApiUrl('https://typo3.example'), 'https://typo3.example', 'host root passes through');
+  assert.equal(typo3HostFromContentApiUrl(''), '');
+  assert.equal(typo3HostFromContentApiUrl(undefined), '');
+  assert.equal(
+    resolveApiBase({ config: { apiBase: 'https://typo3.example/' }, override: 'https://other.example', fallback: 'https://third.example' }),
+    'https://typo3.example',
+    'injected builder config has priority and is slash trimmed',
+  );
+  assert.equal(
+    resolveApiBase({ config: { apiBase: '' }, override: 'https://other.example/', fallback: 'https://third.example' }),
+    'https://other.example',
+    'manual override is next',
+  );
+  assert.equal(resolveApiBase({ config: undefined, override: undefined, fallback: '' }), '', 'empty fallback means demo mode');
+  assert.equal(resolveApiBase({}), '', 'default constant is the demo API');
+  assert.equal(builderSavePath(''), '/api/builder/save', 'demo save path unchanged');
+  assert.equal(builderSavePath('https://typo3.example'), '/api/builder/v1/save', 'TYPO3 save path is versioned');
+});
+
+test('storage client sends the preview token header on TYPO3 writes only when a token is set', async () => {
+  const calls = [];
+  const fakeFetch = async (url, options) => {
+    calls.push([url, options]);
+    return { ok: true, status: 200, json: async () => ({ notice: 'saved', type: { id: 'custom.x' } }) };
+  };
+  let token = '';
+  const api = createTypo3ApiClient({ base: 'https://typo3.example', fetchFn: fakeFetch, getToken: () => token });
+  assert.equal(api.savePath, '/api/builder/v1/save');
+
+  await api.storePage({ slug: 'home', elements: [] });
+  assert.equal(calls[0][0], 'https://typo3.example/api/builder/v1/save');
+  assert.equal(calls[0][1].headers['x-preview-token'], undefined, 'no token header before a token is entered');
+
+  token = 'tok-abc';
+  await api.storePage({ slug: 'home', elements: [] });
+  assert.equal(calls[1][1].headers['x-preview-token'], 'tok-abc', 'save sends the token header');
+  const created = await api.createElementType({ id: 'custom.x' });
+  assert.equal(calls[2][0], 'https://typo3.example/api/v1/element-types');
+  assert.equal(calls[2][1].headers['x-preview-token'], 'tok-abc', 'element type create sends the token header');
+  assert.equal(created.id, 'custom.x');
+
+  const demoCalls = [];
+  const demo = createTypo3ApiClient({
+    base: '',
+    fetchFn: async (url, options) => { demoCalls.push([url, options]); return { ok: true, status: 200, json: async () => ({}) }; },
+    getToken: () => 'tok-abc',
+  });
+  await demo.storePage({ slug: 'home', elements: [] });
+  assert.equal(demoCalls[0][0], '/api/builder/save', 'demo base keeps the original save path');
 });
