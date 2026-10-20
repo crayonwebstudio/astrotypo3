@@ -1,0 +1,12 @@
+---
+const { element, preview = false } = Astro.props;
+const p = element?.props ?? {};
+const attrs = preview ? { 'data-astro-builder-id': element.id, class: 'preview-editable' } : {};
+---
+
+<section {...attrs} style="padding: var(--space-lg) 0;"><div class="container">
+  <div class:list={['image-text', { reversed: p.reversed }]}>
+    <figure><img src={p.imageSrc} alt={p.imageAlt ?? ''} loading="lazy" /></figure>
+    <div><h2>{p.heading}</h2><p>{p.text}</p></div>
+  </div>
+</div></section>
