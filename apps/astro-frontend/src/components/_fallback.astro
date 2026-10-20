@@ -1,0 +1,6 @@
+---
+const { element, preview = false } = Astro.props;
+---
+<div data-astro-builder-id={preview ? element?.id : undefined} role="note" style="border: 2px dashed #999; padding: 1rem;">
+  Unknown component: {element?.componentId ?? 'missing'}. It was not rendered for safety.
+</div>
