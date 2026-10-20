@@ -1,0 +1,14 @@
+:root {
+  --color-primary: #0f3b2e;
+  --color-accent: #ff795b;
+  --color-background: #faf8f5;
+  --color-surface: #ffffff;
+  --color-text: #242424;
+  --color-muted: #5c5c5c;
+  --color-border: #e3ddd4;
+  --font-heading: system-ui, -apple-system, Segoe UI, sans-serif;
+  --font-body: system-ui, -apple-system, Segoe UI, sans-serif;
+  --radius: 12px;
+  --container: 1120px;
+  --space-sm: 0.75rem; --space-md: 1.25rem; --space-lg: 2.5rem; --space-xl: 4.5rem;
+}
