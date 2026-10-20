@@ -1,0 +1,296 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import registry from '../data/registry.json';
+import templates from '../data/templates.json';
+import home from '../data/sample-published.json';
+---
+<BaseLayout title="Visual builder: AstroTYPO3" description="Demo visual builder for AstroTYPO3.">
+  <style>
+    .builder-shell { display: grid; grid-template-columns: 280px 1fr 300px; gap: 1rem; padding: 1rem; align-items: start; }
+    @media (max-width: 1000px) { .builder-shell { grid-template-columns: 1fr; } }
+    .panel { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius); padding: 1rem; }
+    .lib-item { display: block; width: 100%; text-align: left; margin: 0.35rem 0; padding: 0.6rem; border: 1px solid var(--color-border); border-radius: 8px; background: #fff; cursor: grab; }
+    .canvas-wrap { min-height: 500px; background: #fff; border: 1px solid var(--color-border); border-radius: var(--radius); padding: 1rem; margin: 0 auto; width: 100%; transition: max-width 0.2s; }
+    .canvas-el { border: 1px dashed transparent; padding: 0.5rem; margin: 0.4rem 0; position: relative; }
+    .canvas-el:hover { border-color: var(--color-border); }
+    .canvas-el.selected { border-color: var(--color-accent); outline: 2px solid var(--color-accent); }
+    .el-tools { display: flex; gap: 0.3rem; flex-wrap: wrap; margin-bottom: 0.4rem; }
+    .el-tools button, .toolbar button { padding: 0.3rem 0.6rem; cursor: pointer; }
+    .children-zone { border: 1px dashed var(--color-border); padding: 0.5rem; margin-left: 1rem; }
+    .toolbar { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; margin-bottom: 1rem; }
+    label { display: block; font-weight: 700; margin-top: 0.7rem; }
+    input, select, textarea { width: 100%; padding: 0.45rem; }
+    .status { padding: 0.6rem; background: #fff8f0; border: 1px solid var(--color-border); border-radius: 8px; white-space: pre-wrap; }
+  </style>
+
+  <div style="padding: 1rem 1rem 0;">
+    <p><a href="/">Home</a> | <a href="/templates">Templates</a> | <a href="/audit">Audit</a> | <a href="/preview/home?token=demo">Draft preview demo</a></p>
+    <h1>Visual builder (demo)</h1>
+    <p>Demo mode: drafts save to browser local storage and to the demo save endpoint. Production editing goes through TYPO3 with real permissions. The AI panel uses a labelled mock provider.</p>
+    <div class="toolbar" role="toolbar" aria-label="Builder toolbar">
+      <button id="btn-undo" type="button">Undo</button>
+      <button id="btn-redo" type="button">Redo</button>
+      <button id="btn-save" type="button">Save draft</button>
+      <button id="btn-validate" type="button">Validate</button>
+      <button id="btn-publish" type="button">Publish</button>
+      <button id="btn-clear" type="button">Reset to home template</button>
+      <span>Preview width:</span>
+      <button data-width="100%" type="button">Desktop</button>
+      <button data-width="768px" type="button">Tablet</button>
+      <button data-width="390px" type="button">Mobile</button>
+      <span id="unsaved" aria-live="polite"></span>
+    </div>
+    <p id="status" class="status" aria-live="polite">Builder ready.</p>
+  </div>
+
+  <div class="builder-shell">
+    <aside class="panel" aria-label="Component library">
+      <h2>Components</h2>
+      <input id="lib-search" type="search" placeholder="Search components" aria-label="Search components" />
+      <div id="library"></div>
+      <h2>AI assistant (mock)</h2>
+      <label for="ai-prompt">Describe a section or page</label>
+      <textarea id="ai-prompt" rows="3" placeholder="For example: add an faq section"></textarea>
+      <button id="btn-ai" type="button" style="margin-top: 0.5rem;">Generate with mock AI</button>
+      <div id="ai-result" style="margin-top: 0.5rem;"></div>
+    </aside>
+
+    <main class="panel" aria-label="Canvas">
+      <label for="page-title">Page title</label>
+      <input id="page-title" type="text" />
+      <label for="page-slug">Slug</label>
+      <input id="page-slug" type="text" />
+      <div id="canvas" class="canvas-wrap"></div>
+    </main>
+
+    <aside class="panel" aria-label="Property inspector">
+      <h2>Inspector</h2>
+      <div id="inspector"><p>Select an element on the canvas to edit its properties. The form is generated from the component schema.</p></div>
+    </aside>
+  </div>
+
+  <script type="application/json" id="builder-data" set:html={JSON.stringify({ registry, templates, home })}></script>
+
+  <script>
+    import { validatePage, validateChangePlan } from '../lib/validate.mjs';
+    import { auditPage } from '../lib/audit.mjs';
+
+    const data = JSON.parse(document.getElementById('builder-data').textContent);
+    const registry = data.registry;
+    const byId = new Map(registry.components.map((c) => [c.id, c]));
+    const LS_KEY = 'astrotypo3-builder-draft';
+    let uid = 100;
+    function nextId(cid) { uid += 1; return 'el-' + cid.replace(/[^a-z0-9]+/gi, '-') + '-' + uid; }
+    function defaultsFor(cid) {
+      const def = byId.get(cid); const props = {};
+      if (def) for (const [k, spec] of Object.entries(def.props || {})) if (spec.default !== undefined) props[k] = JSON.parse(JSON.stringify(spec.default));
+      return props;
+    }
+    function clone(x) { return JSON.parse(JSON.stringify(x)); }
+
+    let page = loadInitial();
+    let selectedId = null;
+    let undoStack = [];
+    let redoStack = [];
+    let dirty = false;
+
+    function loadInitial() {
+      const pending = localStorage.getItem('astrotypo3-apply-template');
+      if (pending) {
+        localStorage.removeItem('astrotypo3-apply-template');
+        try {
+          const t = JSON.parse(pending);
+          if (t.mode === 'replace') return { id: 'page-builder', slug: t.slug || 'home', title: t.title || 'Untitled page', status: 'draft', locale: 'en', seo: { title: '', description: '' }, elements: clone(t.elements || []) };
+          const saved = loadSaved();
+          if (saved) { saved.elements = saved.elements.concat(clone(t.elements || [])); return saved; }
+        } catch {}
+      }
+      return loadSaved() || { id: 'page-builder', slug: data.home.slug, title: data.home.title, status: 'draft', locale: 'en', seo: clone(data.home.seo || {}), elements: clone(data.home.elements || []) };
+    }
+    function loadSaved() {
+      try { const raw = localStorage.getItem(LS_KEY); return raw ? JSON.parse(raw) : null; } catch { return null; }
+    }
+    function snapshot() { undoStack.push(clone(page.elements)); if (undoStack.length > 60) undoStack.shift(); redoStack = []; }
+    function markDirty() { dirty = true; document.getElementById('unsaved').textContent = 'Unsaved changes'; }
+    function setStatus(msg) { document.getElementById('status').textContent = msg; }
+
+    function findListAndIndex(list, id) {
+      for (let i = 0; i < list.length; i++) {
+        if (list[i].id === id) return { list, index: i, el: list[i] };
+        if (list[i].children) { const found = findListAndIndex(list[i].children, id); if (found) return found; }
+      }
+      return null;
+    }
+    function findEl(id) { const f = findListAndIndex(page.elements, id); return f ? f.el : null; }
+
+    function previewText(el) {
+      const p = el.props || {};
+      return String(p.heading || p.text || p.label || p.brand || (typeof p.html === 'string' ? p.html.replace(/<[^>]+>/g, '') : '') || el.componentId).slice(0, 140);
+    }
+
+    function renderCanvas() {
+      const canvas = document.getElementById('canvas');
+      canvas.innerHTML = '';
+      const renderList = (list, parent) => {
+        for (const el of list) {
+          const def = byId.get(el.componentId);
+          const box = document.createElement('div');
+          box.className = 'canvas-el' + (el.id === selectedId ? ' selected' : '');
+          box.setAttribute('data-element-id', el.id);
+          box.draggable = true;
+          box.addEventListener('click', (e) => { e.stopPropagation(); selectedId = el.id; renderCanvas(); renderInspector(); });
+          box.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text/element-id', el.id); });
+          box.addEventListener('dragover', (e) => { e.preventDefault(); });
+          box.addEventListener('drop', (e) => {
+            e.preventDefault(); e.stopPropagation();
+            const libCid = e.dataTransfer.getData('text/component-id');
+            const dragId = e.dataTransfer.getData('text/element-id');
+            if (libCid) addElement(libCid, el.id);
+            else if (dragId && dragId !== el.id) moveElementBefore(dragId, el.id);
+          });
+          const tools = document.createElement('div'); tools.className = 'el-tools';
+          const label = document.createElement('strong'); label.textContent = (def ? def.label : el.componentId) + ': '; tools.appendChild(label);
+          const txt = document.createElement('span'); txt.textContent = previewText(el); tools.appendChild(txt);
+          const mk = (name, fn) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = name; b.addEventListener('click', (e) => { e.stopPropagation(); fn(); }); return b; };
+          tools.appendChild(mk('Up', () => move(el.id, -1)));
+          tools.appendChild(mk('Down', () => move(el.id, 1)));
+          tools.appendChild(mk('Duplicate', () => { snapshot(); const f = findListAndIndex(page.elements, el.id); const copy = clone(f.el); copy.id = nextId(copy.componentId); f.list.splice(f.index + 1, 0, copy); afterChange('Duplicated ' + copy.componentId); }));
+          tools.appendChild(mk('Delete', () => { if (!confirm('Delete this element?')) return; snapshot(); const f = findListAndIndex(page.elements, el.id); f.list.splice(f.index, 1); if (selectedId === el.id) selectedId = null; afterChange('Deleted ' + el.componentId); }));
+          box.appendChild(tools);
+          parent.appendChild(box);
+          if (def && def.childrenAllowed) {
+            const zone = document.createElement('div'); zone.className = 'children-zone';
+            zone.textContent = el.children && el.children.length ? '' : 'Drop or add child components here. Allowed: ' + def.childrenAllowed.join(', ');
+            box.appendChild(zone);
+            if (el.children) renderList(el.children, zone);
+          }
+        }
+      };
+      renderList(page.elements, canvas);
+      document.getElementById('page-title').value = page.title || '';
+      document.getElementById('page-slug').value = page.slug || '';
+    }
+
+    function afterChange(msg) { markDirty(); renderCanvas(); renderInspector(); if (msg) setStatus(msg); }
+
+    function addElement(cid, afterId) {
+      const def = byId.get(cid); if (!def) return;
+      const el = { id: nextId(cid), componentId: cid, props: defaultsFor(cid) };
+      if (def.childrenAllowed) el.children = [];
+      snapshot();
+      if (selectedId) {
+        const sel = findEl(selectedId); const selDef = sel ? byId.get(sel.componentId) : null;
+        if (sel && selDef && selDef.childrenAllowed && selDef.childrenAllowed.includes(cid)) { sel.children = sel.children || []; sel.children.push(el); selectedId = el.id; afterChange('Added ' + cid + ' inside ' + sel.componentId); return; }
+      }
+      if (afterId) { const f = findListAndIndex(page.elements, afterId); if (f) { f.list.splice(f.index + 1, 0, el); selectedId = el.id; afterChange('Added ' + cid); return; } }
+      page.elements.push(el); selectedId = el.id; afterChange('Added ' + cid);
+    }
+    function move(id, dir) {
+      const f = findListAndIndex(page.elements, id); if (!f) return;
+      const j = f.index + dir; if (j < 0 || j >= f.list.length) return;
+      snapshot(); const tmp = f.list[f.index]; f.list[f.index] = f.list[j]; f.list[j] = tmp; afterChange('Moved element');
+    }
+    function moveElementBefore(dragId, targetId) {
+      const from = findListAndIndex(page.elements, dragId); const to = findListAndIndex(page.elements, targetId);
+      if (!from || !to || from.list !== to.list) { setStatus('Drag reordering across different parents is not supported in the demo. Use Up and Down inside a parent.'); return; }
+      snapshot(); const item = from.list.splice(from.index, 1)[0]; const target = findListAndIndex(page.elements, targetId); target.list.splice(target.index, 0, item); afterChange('Reordered by drag and drop');
+    }
+
+    function renderLibrary() {
+      const q = (document.getElementById('lib-search').value || '').toLowerCase();
+      const wrap = document.getElementById('library'); wrap.innerHTML = '';
+      const cats = {};
+      for (const c of registry.components) { (cats[c.category] = cats[c.category] || []).push(c); }
+      for (const [cat, items] of Object.entries(cats)) {
+        const h = document.createElement('h3'); h.textContent = cat; wrap.appendChild(h);
+        for (const c of items) {
+          if (q && !(c.label.toLowerCase().includes(q) || c.id.includes(q))) continue;
+          const b = document.createElement('button'); b.type = 'button'; b.className = 'lib-item'; b.draggable = true;
+          b.textContent = c.label + ' (' + c.id + ')';
+          b.title = c.description;
+          b.addEventListener('click', () => addElement(c.id));
+          b.addEventListener('dragstart', (e) => e.dataTransfer.setData('text/component-id', c.id));
+          wrap.appendChild(b);
+        }
+      }
+    }
+
+    function renderInspector() {
+      const wrap = document.getElementById('inspector'); wrap.innerHTML = '';
+      const el = selectedId ? findEl(selectedId) : null;
+      if (!el) { wrap.innerHTML = '<p>Select an element on the canvas to edit its properties. The form is generated from the component schema.</p>'; return; }
+      const def = byId.get(el.componentId);
+      const title = document.createElement('h3'); title.textContent = def ? def.label : el.componentId; wrap.appendChild(title);
+      const idp = document.createElement('p'); idp.textContent = 'ID: ' + el.id; wrap.appendChild(idp);
+      if (def && def.accessibility) { const a = document.createElement('p'); a.textContent = 'Accessibility: ' + def.accessibility; wrap.appendChild(a); }
+      for (const [key, spec] of Object.entries((def && def.props) || {})) {
+        const label = document.createElement('label'); label.textContent = key + ' (' + spec.type + (spec.required ? ', required' : '') + ')'; wrap.appendChild(label);
+        let input;
+        const value = el.props ? el.props[key] : undefined;
+        if (spec.type === 'boolean') { input = document.createElement('input'); input.type = 'checkbox'; input.checked = Boolean(value); input.addEventListener('change', () => updateProp(el, key, input.checked)); }
+        else if (spec.type === 'enum') { input = document.createElement('select'); for (const v of spec.values || []) { const o = document.createElement('option'); o.value = v; o.textContent = v; if (v === value) o.selected = true; input.appendChild(o); } input.addEventListener('change', () => updateProp(el, key, input.value)); }
+        else if (spec.type === 'array' || spec.type === 'object') { input = document.createElement('textarea'); input.rows = 5; input.value = JSON.stringify(value ?? spec.default ?? [], null, 2); input.addEventListener('change', () => { try { updateProp(el, key, JSON.parse(input.value)); } catch { setStatus('Invalid JSON for ' + key + '. Change not saved.'); } }); }
+        else { input = document.createElement(spec.type === 'string' && key === 'html' ? 'textarea' : 'input'); if (input.tagName === 'INPUT') input.type = spec.type === 'number' ? 'number' : 'text'; input.value = value ?? spec.default ?? ''; input.addEventListener('change', () => updateProp(el, key, spec.type === 'number' ? Number(input.value) : input.value)); }
+        wrap.appendChild(input);
+      }
+      const previewLink = document.createElement('p');
+      previewLink.innerHTML = '<a href="/preview/home?token=demo" target="_blank" rel="noreferrer">Open draft preview demo</a>';
+      wrap.appendChild(previewLink);
+    }
+    function updateProp(el, key, value) { snapshot(); el.props = el.props || {}; el.props[key] = value; afterChange('Updated ' + key + ' on ' + el.componentId); }
+
+    document.getElementById('lib-search').addEventListener('input', renderLibrary);
+    document.getElementById('page-title').addEventListener('change', (e) => { snapshot(); page.title = e.target.value; markDirty(); });
+    document.getElementById('page-slug').addEventListener('change', (e) => { snapshot(); page.slug = e.target.value; markDirty(); });
+    document.querySelectorAll('[data-width]').forEach((b) => b.addEventListener('click', () => { document.getElementById('canvas').style.maxWidth = b.getAttribute('data-width'); }));
+    document.getElementById('btn-undo').addEventListener('click', () => { if (!undoStack.length) return setStatus('Nothing to undo.'); redoStack.push(clone(page.elements)); page.elements = undoStack.pop(); afterChange('Undid last change'); });
+    document.getElementById('btn-redo').addEventListener('click', () => { if (!redoStack.length) return setStatus('Nothing to redo.'); undoStack.push(clone(page.elements)); page.elements = redoStack.pop(); afterChange('Redid change'); });
+    document.getElementById('btn-clear').addEventListener('click', () => { if (!confirm('Reset the canvas to the home template? Your saved draft in local storage will be replaced when you save.')) return; snapshot(); page.elements = clone(data.home.elements || []); afterChange('Reset to home template'); });
+    document.getElementById('btn-validate').addEventListener('click', () => {
+      const check = validatePage(page, registry);
+      const findings = auditPage(page);
+      setStatus(check.valid ? 'Validation passed. Audit findings: ' + findings.length + (findings.length ? ' (' + findings.map((f) => f.code).join(', ') + ')' : '') : 'Validation failed:\n' + check.errors.join('\n'));
+    });
+    document.getElementById('btn-save').addEventListener('click', async () => {
+      const check = validatePage(page, registry);
+      if (!check.valid) { setStatus('Cannot save, validation failed:\n' + check.errors.join('\n')); return; }
+      localStorage.setItem(LS_KEY, JSON.stringify(page));
+      try {
+        const res = await fetch('/api/builder/save', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ page }) });
+        const out = await res.json();
+        dirty = false; document.getElementById('unsaved').textContent = '';
+        setStatus('Saved draft locally and to the demo endpoint. Server response: ' + JSON.stringify(out.notice || out));
+      } catch (err) { setStatus('Saved locally. Demo endpoint failed: ' + String(err)); }
+    });
+    document.getElementById('btn-publish').addEventListener('click', async () => {
+      try {
+        const res = await fetch('/api/publish', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ slug: page.slug }) });
+        const out = await res.json();
+        setStatus('Publish result (' + res.status + '): ' + (out.message || JSON.stringify(out)));
+      } catch (err) { setStatus('Publish failed: ' + String(err)); }
+    });
+    document.getElementById('btn-ai').addEventListener('click', async () => {
+      const prompt = document.getElementById('ai-prompt').value.trim();
+      const box = document.getElementById('ai-result'); box.innerHTML = '';
+      if (!prompt) { setStatus('Write an AI prompt first.'); return; }
+      const res = await fetch('/api/ai/generate', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ prompt }) });
+      const out = await res.json();
+      if (!res.ok || !out.plan) { setStatus('AI mock failed: ' + JSON.stringify(out)); return; }
+      const pre = document.createElement('pre'); pre.style.whiteSpace = 'pre-wrap'; pre.textContent = 'Provider: mock (labelled mock, not a real model)\n' + JSON.stringify(out.plan, null, 2); box.appendChild(pre);
+      const apply = document.createElement('button'); apply.type = 'button'; apply.textContent = 'Review done: apply plan';
+      apply.addEventListener('click', () => {
+        const check = validateChangePlan(out.plan, registry);
+        if (!check.valid) { setStatus('Plan rejected by validation:\n' + check.errors.join('\n')); return; }
+        snapshot();
+        for (const op of out.plan.operations) if (op.type === 'add_element' && op.element) page.elements.push(clone(op.element));
+        afterChange('Applied mock AI plan. Review the new elements before saving.');
+      });
+      box.appendChild(apply);
+    });
+    const canvas = document.getElementById('canvas');
+    canvas.addEventListener('dragover', (e) => e.preventDefault());
+    canvas.addEventListener('drop', (e) => { const cid = e.dataTransfer.getData('text/component-id'); if (cid) { e.preventDefault(); addElement(cid); } });
+
+    renderLibrary(); renderCanvas(); renderInspector();
+  </script>
+</BaseLayout>
