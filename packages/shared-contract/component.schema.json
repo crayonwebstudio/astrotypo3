@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astrotypo3.example/contracts/v1/component.schema.json",
+  "title": "ComponentDefinition and Instance",
+  "type": "object",
+  "properties": {
+    "definition": {
+      "type": "object",
+      "required": [
+        "id",
+        "version",
+        "category",
+        "label",
+        "props"
+      ]
+    },
+    "instance": {
+      "type": "object",
+      "required": [
+        "id",
+        "componentId",
+        "props"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "componentId": {
+          "type": "string"
+        },
+        "props": {
+          "type": "object"
+        },
+        "children": {
+          "type": "array"
+        }
+      }
+    }
+  }
+}
