@@ -12,6 +12,7 @@ use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 use TYPO3\CMS\Core\Http\JsonResponse;
+use TYPO3\CMS\Core\Http\Response;
 
 /**
  * HTTP entry point for the astro_builder API.
@@ -41,9 +42,27 @@ use TYPO3\CMS\Core\Http\JsonResponse;
  *   POST /api/builder/v1/save             builder save, requires a preview
  *                                         token for the page slug in the
  *                                         JSON body
+ *
+ * CORS: browser calls from allowlisted origins (the Astro builder host and
+ * localhost dev origins) get Access-Control headers, and OPTIONS preflight
+ * requests to API paths are answered here with 204 before any auth check.
  */
 final class ApiMiddleware implements MiddlewareInterface
 {
+    /**
+     * Origins allowed to call the API from a browser. The production builder
+     * runs on the Astro host; localhost entries cover local development of
+     * the builder against this API. Server-to-server calls send no Origin
+     * header and are unaffected.
+     */
+    private const ALLOWED_ORIGINS = [
+        'https://astrotypo3.woodwolfdigital.com',
+        'http://localhost:4321',
+        'http://127.0.0.1:4321',
+        'http://localhost:4322',
+        'http://127.0.0.1:4322',
+    ];
+
     public function __construct(
         private readonly ContentApiController $contentController,
         private readonly BuilderApiController $builderController,
@@ -57,6 +76,49 @@ final class ApiMiddleware implements MiddlewareInterface
         $path = $request->getUri()->getPath();
         $method = strtoupper($request->getMethod());
 
+        if ($this->isApiPath($path)) {
+            $origin = $request->getHeaderLine('Origin');
+            // Browser preflight: answer directly, before any auth or routing.
+            // Browsers never send credentials or the preview token here.
+            if ($method === 'OPTIONS') {
+                return $this->withCorsHeaders(new Response('php://temp', 204), $origin);
+            }
+            return $this->withCorsHeaders($this->dispatchApi($request, $path, $method), $origin);
+        }
+        return $handler->handle($request);
+    }
+
+    private function isApiPath(string $path): bool
+    {
+        return $path === '/api/content/v1/pages'
+            || str_starts_with($path, '/api/content/v1/pages/')
+            || str_starts_with($path, '/api/content/v1/draft/')
+            || $path === '/api/content/v1/registry'
+            || $path === '/api/content/v1/templates'
+            || $path === '/api/v1/element-types'
+            || $path === '/api/builder/v1/save';
+    }
+
+    /**
+     * Adds CORS headers when the request Origin is on the allowlist. Requests
+     * from other origins (or without an Origin header) are served normally;
+     * the browser simply will not expose the response to that origin.
+     */
+    private function withCorsHeaders(ResponseInterface $response, string $origin): ResponseInterface
+    {
+        if ($origin === '' || !in_array($origin, self::ALLOWED_ORIGINS, true)) {
+            return $response;
+        }
+        return $response
+            ->withHeader('Access-Control-Allow-Origin', $origin)
+            ->withHeader('Vary', 'Origin')
+            ->withHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+            ->withHeader('Access-Control-Allow-Headers', 'Content-Type, X-Preview-Token, Authorization')
+            ->withHeader('Access-Control-Max-Age', '600');
+    }
+
+    private function dispatchApi(ServerRequestInterface $request, string $path, string $method): ResponseInterface
+    {
         if ($path === '/api/content/v1/pages' || str_starts_with($path, '/api/content/v1/pages/')) {
             if ($method !== 'GET') {
                 return $this->methodNotAllowed();
@@ -98,7 +160,9 @@ final class ApiMiddleware implements MiddlewareInterface
             }
             return $this->builderSave($request);
         }
-        return $handler->handle($request);
+        // Unreachable: process() only dispatches paths isApiPath() accepts,
+        // and every one of them is handled above.
+        return new JsonResponse(['error' => ['code' => 'not_found', 'message' => 'Unknown API path.']], 404);
     }
 
     /**
