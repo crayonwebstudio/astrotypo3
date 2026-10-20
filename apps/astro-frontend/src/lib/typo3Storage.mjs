@@ -248,6 +248,9 @@ export function createTypo3ApiClient({ base, fetchFn, getToken, savePath } = {})
   };
 }
 
+/** Id of the GrapesJS custom storage type backed by the TYPO3 API. */
+export const GRAPES_STORAGE_TYPE_ID = 'typo3-api';
+
 /**
  * GrapesJS custom storage type ("typo3-api") backed by the contract client.
  * state is a live object: { page, meta, registry } that the builder page
@@ -255,6 +258,10 @@ export function createTypo3ApiClient({ base, fetchFn, getToken, savePath } = {})
  * store() serializes the project data GrapesJS hands over back to page JSON
  * and POSTs it. Autosave stays off: the builder calls editor.store() only
  * from the explicit Save button.
+ *
+ * The returned object matches the IStorage interface of grapesjs 0.23.8
+ * (node_modules/grapesjs/dist/index.d.ts): load(options) and
+ * store(data, options), both async.
  */
 export function createGrapesStorageType(state, client) {
   return {
@@ -275,4 +282,23 @@ export function createGrapesStorageType(state, client) {
       return client.storePage(page);
     },
   };
+}
+
+/**
+ * Register the "typo3-api" storage type on a GrapesJS editor.
+ *
+ * GrapesJS 0.23.8 registers custom storages with StorageManager.add(type,
+ * storage), see the StorageManager class in
+ * node_modules/grapesjs/dist/index.d.ts. There is NO addType method on the
+ * storage manager (addType exists on DomComponents, TraitManager,
+ * AssetManager and StyleManager, which is how the wrong call slipped in).
+ * Calling editor.Storage.addType() throws "Storage.addType is not a
+ * function" during editor init and the whole builder fails to start.
+ * Keep this registration in one exported function so the builder page and
+ * the regression test run the exact same code path.
+ */
+export function registerGrapesStorage(editor, state, client) {
+  const storage = createGrapesStorageType(state, client);
+  editor.Storage.add(GRAPES_STORAGE_TYPE_ID, storage);
+  return storage;
 }
