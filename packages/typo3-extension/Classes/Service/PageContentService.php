@@ -8,8 +8,10 @@ use TYPO3\CMS\Core\Utility\GeneralUtility;
 
 final class PageContentService
 {
-    public function __construct(private readonly ValidationService $validationService)
-    {
+    public function __construct(
+        private readonly ValidationService $validationService,
+        private readonly ContentElementMapper $elementMapper,
+    ) {
     }
 
     public function findPublishedBySlug(string $slug): ?Page
@@ -45,14 +47,16 @@ final class PageContentService
         if (!is_array($row)) {
             return null;
         }
-        // Element loading is intentionally isolated so the mapping can be
-        // covered by functional tests with a real database.
+        // Elements come from tt_content through the ContentElementMapper:
+        // published reads hide hidden records, draft reads include them.
+        $pageUid = (int)($row['uid'] ?? 0);
+        $elements = $pageUid > 0 ? $this->elementMapper->elementsForPage($pageUid, $status === 'draft') : [];
         return new Page(
             'page-' . (string)($row['uid'] ?? ''),
             (string)($row['slug'] ?? $slug),
             (string)($row['title'] ?? ''),
             $status,
-            [],
+            $elements,
             [],
             'en',
         );
