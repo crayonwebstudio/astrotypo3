@@ -1,0 +1,10 @@
+---
+const { element, preview = false } = Astro.props;
+const p = element?.props ?? {};
+const attrs = preview ? { 'data-astro-builder-id': element.id, class: 'preview-editable' } : {};
+---
+
+<figure {...attrs}>
+  <img src={p.src} alt={p.alt ?? ''} width={p.width ?? 1200} height={p.height ?? 800} loading="lazy" />
+  {p.caption ? <figcaption>{p.caption}</figcaption> : null}
+</figure>
