@@ -1,0 +1,11 @@
+services:
+  _defaults:
+    autowire: true
+    autoconfigure: true
+    public: false
+  Crayonwebstudio\AstroBuilder\:
+    resource: '../Classes/*'
+  Crayonwebstudio\AstroBuilder\Controller\ContentApiController:
+    public: true
+  Crayonwebstudio\AstroBuilder\Controller\BuilderApiController:
+    public: true
