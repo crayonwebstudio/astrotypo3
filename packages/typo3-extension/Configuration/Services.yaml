@@ -9,6 +9,15 @@ services:
     public: true
   Crayonwebstudio\AstroBuilder\Controller\BuilderApiController:
     public: true
+  Crayonwebstudio\AstroBuilder\Controller\ElementTypeApiController:
+    public: true
+  # Ship the shared contract inside the extension so the registry works on a
+  # standalone install. The path is relative to the extension root and is
+  # resolved by ComponentRegistryService. The environment variable
+  # ASTRO_BUILDER_SHARED_CONTRACT_PATH overrides it when set.
+  Crayonwebstudio\AstroBuilder\Service\ComponentRegistryService:
+    arguments:
+      $sharedContractPath: 'Resources/Private/Contract'
   # Default AI provider is the labelled mock. A site package can override
   # this alias with OpenAiCompatibleProvider and a server side API key.
   Crayonwebstudio\AstroBuilder\Ai\AiProviderInterface:
