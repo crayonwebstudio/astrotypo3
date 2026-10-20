@@ -2,6 +2,16 @@
 import BaseLayout from '../layouts/BaseLayout.astro';
 import registry from '../data/registry.json';
 import home from '../data/sample-published.json';
+import { typo3HostFromContentApiUrl } from '../lib/typo3Storage.mjs';
+
+// Runtime builder configuration, rendered into the page below. When the
+// TYPO3_CONTENT_API_URL env var is set (it points at ".../api/content/v1"),
+// the builder works against that live TYPO3 host: reads are public, writes
+// need the editor supplied preview token from the toolbar. When it is not
+// set, the builder uses this app's same-origin demo API, as before.
+const builderConfig = {
+  apiBase: typo3HostFromContentApiUrl(process.env.TYPO3_CONTENT_API_URL ?? ''),
+};
 ---
 <BaseLayout title="Visual builder: AstroTYPO3" description="GrapesJS visual builder for AstroTYPO3, connected to TYPO3 through the content API.">
   <style>
@@ -31,7 +41,7 @@ import home from '../data/sample-published.json';
   <div class="builder-top">
     <p><a href="/">Home</a> | <a href="/templates">Templates</a> | <a href="/audit">Audit</a> | <a href="/preview/home?token=demo">Draft preview demo</a></p>
     <h1>Visual builder</h1>
-    <p class="builder-note">Builder UI: GrapesJS (BSD-3-Clause). TYPO3 is the backend through the API only, there is no builder interface inside TYPO3 BE. Each block is a TYPO3 core content element type (CType) and each trait is a tt_content field. Demo mode: this app serves the same API contract locally (content, save and element types endpoints), labelled demo. The AI panel uses a labelled mock provider.</p>
+    <p class="builder-note">Builder UI: GrapesJS (BSD-3-Clause). TYPO3 is the backend through the API only, there is no builder interface inside TYPO3 BE. Each block is a TYPO3 core content element type (CType) and each trait is a tt_content field. When this app is configured with a TYPO3 content API URL, the builder loads pages and element types from that live TYPO3 and saves there with a preview token; otherwise it uses this app's same-origin demo API, labelled demo. The AI panel uses a labelled mock provider.</p>
     <div class="toolbar" role="toolbar" aria-label="Builder toolbar">
       <label for="page-title">Title</label>
       <input id="page-title" type="text" />
@@ -51,6 +61,12 @@ import home from '../data/sample-published.json';
       <button id="btn-reset" type="button">Reset to fixture home</button>
       <span id="unsaved" aria-live="polite"></span>
     </div>
+    <div class="toolbar" role="toolbar" aria-label="TYPO3 connection">
+      <label for="typo3-token">TYPO3 token</label>
+      <input id="typo3-token" type="password" autocomplete="off" placeholder="Preview token (only needed to save to TYPO3)" size="42" />
+      <span id="api-target" style="font-size: 0.9rem;"></span>
+    </div>
+    <p style="font-size: 0.85rem; max-width: 70rem;">Tokens are minted from the TYPO3 preview secret (ASTRO_BUILDER_PREVIEW_SECRET) and are scoped: a token minted for a page slug authorizes saving that page, a token minted for the element-types scope authorizes creating element types. The token is kept in page memory only, never stored.</p>
     <p id="status" class="status" aria-live="polite">Builder starting.</p>
   </div>
 
@@ -96,6 +112,7 @@ import home from '../data/sample-published.json';
   </div>
 
   <script type="application/json" id="builder-data" set:html={JSON.stringify({ registry, home })}></script>
+  <script is:inline set:html={`window.__ASTRO_BUILDER_CONFIG__ = ${JSON.stringify(builderConfig)};`}></script>
 
   <script>
     import grapesjs from 'grapesjs';
@@ -104,12 +121,24 @@ import home from '../data/sample-published.json';
     import globalCss from '../styles/global.css?raw';
     import { buildGrapesTypes, buildGrapesBlocks, renderElementHtml, propsToAttributes, attributesToProps, defaultsForProps } from '../lib/grapesRegistry.mjs';
     import { registryToElementTypes, mergeElementTypes, elementTypeToRegistryComponent, ctypeFor, ALLOWED_FIELD_TYPES } from '../lib/elementTypes.mjs';
-    import { createTypo3ApiClient, createGrapesStorageType, pageToGrapesComponents, grapesComponentsToPage, elementToComponentData, DRAFT_LOCALSTORAGE_KEY } from '../lib/typo3Storage.mjs';
+    import { createTypo3ApiClient, createGrapesStorageType, pageToGrapesComponents, grapesComponentsToPage, elementToComponentData, DRAFT_LOCALSTORAGE_KEY, getTypo3ApiBase } from '../lib/typo3Storage.mjs';
     import { validatePage, validateChangePlan } from '../lib/validate.mjs';
     import { auditPage } from '../lib/audit.mjs';
 
     const bundled = JSON.parse(document.getElementById('builder-data').textContent);
-    const client = createTypo3ApiClient({});
+    // API base resolves from window.__ASTRO_BUILDER_CONFIG__ (server side
+    // rendered from TYPO3_CONTENT_API_URL). Empty means the demo API.
+    // The token comes from the toolbar password input and is read fresh on
+    // every write; it is never persisted anywhere.
+    const client = createTypo3ApiClient({
+      getToken: () => (document.getElementById('typo3-token') || {}).value || '',
+    });
+    const apiTargetEl = document.getElementById('api-target');
+    if (apiTargetEl) {
+      apiTargetEl.textContent = client.base
+        ? 'Connected to TYPO3 API: ' + client.base + ' (reads are public, saves and new element types need the token)'
+        : 'Demo API mode: this app serves the API contract locally.';
+    }
     const canvasCss = tokensCss + '\n' + globalCss.replace(/@import[^;]+;/, '');
 
     // Live registry state: bundled core components plus API-created types.
@@ -490,7 +519,9 @@ import home from '../data/sample-published.json';
         wireAiPanel();
         await loadInitialPage();
         markClean();
-        setStatus('Builder ready. Blocks are TYPO3 core element types, traits are their fields. Demo API storage: saves go to the demo endpoint in this app.');
+        setStatus(client.base
+          ? 'Builder ready. Blocks are TYPO3 core element types, traits are their fields. Storage target: live TYPO3 at ' + client.base + '. Enter a preview token in the toolbar before saving.'
+          : 'Builder ready. Blocks are TYPO3 core element types, traits are their fields. Demo API storage: saves go to the demo endpoint in this app.');
       } catch (err) {
         setStatus('Builder failed to start: ' + String(err && err.message ? err.message : err));
       }
