@@ -1,0 +1,12 @@
+---
+const { element, preview = false } = Astro.props;
+const p = element?.props ?? {};
+const attrs = preview ? { 'data-astro-builder-id': element.id, class: 'preview-editable' } : {};
+---
+
+<section {...attrs} style="padding: var(--space-lg) 0;"><div class="container">
+  {p.heading ? <h2>{p.heading}</h2> : null}
+  <ul class="grid" style="list-style:none; padding:0;">
+    {(p.items ?? []).map((item: any) => <li class="card"><h3>{item.title}</h3><p>{item.text}</p></li>)}
+  </ul>
+</div></section>
