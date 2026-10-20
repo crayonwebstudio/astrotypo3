@@ -1,0 +1,31 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { auditPage } from '../lib/audit.mjs';
+import home from '../data/sample-published.json';
+import draft from '../data/sample-draft.json';
+const homeFindings = auditPage(home as any);
+const draftFindings = auditPage(draft as any);
+const sections = [
+  { label: 'Published home fixture', findings: homeFindings },
+  { label: 'Draft home fixture', findings: draftFindings },
+];
+---
+<BaseLayout title="SEO and accessibility audit: AstroTYPO3" description="Deterministic SEO and accessibility checks for AstroTYPO3 pages.">
+  <div class="container" style="padding: 2.5rem 1.25rem;">
+    <p><a href="/">Home</a> | <a href="/builder">Builder</a></p>
+    <h1>Page audit</h1>
+    <p>These findings come from deterministic, rule based checks in <code>src/lib/audit.mjs</code>. They are not AI suggestions and they are not a claim of full accessibility compliance. AI suggestions, when a real provider is connected, are labelled separately from deterministic findings.</p>
+    {sections.map((s) => (
+      <section>
+        <h2>{s.label}</h2>
+        {s.findings.length === 0 ? <p>No deterministic findings. This does not guarantee full compliance.</p> : (
+          <ul>
+            {s.findings.map((f: any) => <li><strong>{f.level}</strong>: {f.message} <span>({f.code}{f.elementId ? ', element ' + f.elementId : ''})</span></li>)}
+          </ul>
+        )}
+      </section>
+    ))}
+    <h2>AI suggestions</h2>
+    <p>None. The demo uses a mock AI provider and this audit page does not present mock output as real analysis.</p>
+  </div>
+</BaseLayout>
