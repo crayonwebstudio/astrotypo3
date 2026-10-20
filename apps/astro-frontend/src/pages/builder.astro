@@ -117,8 +117,7 @@ const builderConfig = {
   <script>
     import grapesjs from 'grapesjs';
     import 'grapesjs/dist/css/grapes.min.css';
-    import tokensCss from '../styles/tokens.css?raw';
-    import globalCss from '../styles/global.css?raw';
+    import { CANVAS_CSS_PATH } from '../lib/canvasCss.mjs';
     import { buildGrapesTypes, buildGrapesBlocks, renderElementHtml, propsToAttributes, attributesToProps, defaultsForProps } from '../lib/grapesRegistry.mjs';
     import { registryToElementTypes, mergeElementTypes, elementTypeToRegistryComponent, ctypeFor, ALLOWED_FIELD_TYPES } from '../lib/elementTypes.mjs';
     import { createTypo3ApiClient, registerGrapesStorage, GRAPES_STORAGE_TYPE_ID, pageToGrapesComponents, grapesComponentsToPage, elementToComponentData, DRAFT_LOCALSTORAGE_KEY, getTypo3ApiBase } from '../lib/typo3Storage.mjs';
@@ -139,7 +138,13 @@ const builderConfig = {
         ? 'Connected to TYPO3 API: ' + client.base + ' (reads are public, saves and new element types need the token)'
         : 'Demo API mode: this app serves the API contract locally.';
     }
-    const canvasCss = tokensCss + '\n' + globalCss.replace(/@import[^;]+;/, '');
+    // GrapesJS canvas.styles entries are stylesheet URLs loaded as <link>
+    // tags in the canvas iframe, not CSS text. The canvas stylesheet is
+    // served by this app at a stable path, composed from the same
+    // tokens.css and global.css sources as the public site
+    // (src/pages/builder-canvas.css.ts). An absolute URL is used so the
+    // canvas iframe resolves it against this origin reliably.
+    const canvasCssUrl = new URL(CANVAS_CSS_PATH, window.location.origin).href;
 
     // Live registry state: bundled core components plus API-created types.
     const registryState = { contractVersion: bundled.registry.contractVersion || '1.0.0', components: [...bundled.registry.components] };
@@ -256,7 +261,15 @@ const builderConfig = {
       try { count = editor.getDirtyCount(); } catch { count = 1; }
       document.getElementById('unsaved').textContent = count > 0 ? 'Unsaved changes' : '';
     }
-    function markClean() { document.getElementById('unsaved').textContent = ''; }
+    function markClean() {
+      // Reset the editor's own dirty counter as well as the label.
+      // Loading a page into the canvas (setComponents during applyPage)
+      // counts as changes in GrapesJS, so without clearDirtyCount() the
+      // next 'update' event would re-read a stale positive count in
+      // markDirty() and show "Unsaved changes" before any real edit.
+      try { if (editor) editor.clearDirtyCount(); } catch {}
+      document.getElementById('unsaved').textContent = '';
+    }
 
     function initEditor() {
       editor = grapesjs.init({
@@ -282,7 +295,7 @@ const builderConfig = {
             { name: 'Decorations', open: false, properties: ['background-color', 'border', 'border-radius', 'box-shadow'] },
           ],
         },
-        canvas: { styles: [canvasCss] },
+        canvas: { styles: [canvasCssUrl] },
         panels: { defaults: [] },
         plugins: [(ed) => {
           // GrapesJS 0.23.8: custom storages register via StorageManager.add,
