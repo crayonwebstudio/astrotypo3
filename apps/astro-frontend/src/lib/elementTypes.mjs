@@ -64,7 +64,10 @@ export function normalizeField(raw) {
   if (!FIELD_NAME_PATTERN.test(name) || !ALLOWED_FIELD_TYPES.includes(type)) return null;
   const field = { name, type, required: Boolean(raw.required), default: raw.default !== undefined ? clone(raw.default) :
  (type === 'array' ? [] : type === 'boolean' ? false : '') };
-  if (type === 'enum') field.values = Array.isArray(raw.values) ? raw.values.map((v) => String(v)) : [];
+  if (type === 'enum') {
+    field.values = Array.isArray(raw.values) ? raw.values.map((v) => String(v)) : [];
+    if (!field.values.includes(field.default)) field.default = field.values[0] || '';
+  }
   return field;
 }
 
