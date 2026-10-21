@@ -97,6 +97,31 @@ test('builder page uses the slim bar with the token in a popover', () => {
   assert.ok(page.includes('.gjs-trt-trait .gjs-label'), 'trait label override present');
 });
 
+test('round 3 page fixes: global panel position reset, token anchor, short status', () => {
+  const page = readFileSync(new URL('../src/pages/builder.astro', import.meta.url), 'utf8');
+  const globalStart = page.indexOf('<style is:global>');
+  const globalBlock = page.slice(globalStart, page.indexOf('</style>', globalStart));
+  // The panel bar ordering rules must live in the GLOBAL block and
+  // must reset the GrapesJS theme's absolute positioning, otherwise
+  // flex order never applies (see tests/panel-layout.test.mjs).
+  assert.ok(globalBlock.includes('.panel__top'), 'global block carries the panel bar rules');
+  assert.ok(globalBlock.includes('position: static'), 'global block resets panel positioning to static');
+  assert.ok(globalBlock.includes('margin-left: auto'), 'switcher pushed to the right end in global CSS');
+  // The scoped block must NOT carry the panel bar rules any more, so
+  // there is one source of truth for them.
+  const scopedBlock = page.slice(page.indexOf('<style>'), page.indexOf('</style>'));
+  assert.ok(!scopedBlock.includes('.panel__switcher'), 'panel bar rules not duplicated in the scoped block');
+  // Token popover anchored to its button via a positioned wrapper,
+  // right edge aligned to the wrapper (button), not the strip.
+  assert.ok(page.includes('class="token-anchor"'), 'token anchor wrapper exists');
+  assert.ok(page.indexOf('id="btn-token"') > page.indexOf('class="token-anchor"'), 'token button inside the anchor wrapper');
+  assert.ok(!page.includes('right: 0.6rem'), 'popover no longer anchored to the strip edge');
+  // Ready status text is short (the long form survives as the title
+  // detail), so the slim bar does not ellipsis it mid-URL.
+  assert.ok(page.includes("'Builder ready. Storage: live TYPO3.'"), 'short live ready status');
+  assert.ok(page.includes("'Builder ready. Storage: demo API.'"), 'short demo ready status');
+});
+
 test('views switcher covers blocks, layers, styles and traits', () => {
   const switcher = panelById(buildPanelsConfig(), PANEL_IDS.switcher);
   assert.deepEqual(switcher.buttons.map((b) => b.id), ['show-blocks', 'show-layers', 'show-styles', 'show-traits']);
