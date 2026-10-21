@@ -15,100 +15,132 @@ const builderConfig = {
 ---
 <BaseLayout title="Visual builder: AstroTYPO3" description="GrapesJS visual builder for AstroTYPO3, connected to TYPO3 through the content API.">
   <style>
-    .builder-top { padding: 1rem 1rem 0; }
-    .builder-note { max-width: 70rem; }
-    .toolbar { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; margin: 0.75rem 0; }
-    .toolbar button { padding: 0.35rem 0.7rem; cursor: pointer; }
-    .toolbar input[type="text"] { padding: 0.4rem; }
-    .status { padding: 0.6rem; background: #fff8f0; border: 1px solid var(--color-border); border-radius: 8px; white-space: pre-wrap; }
-    .builder-layout { display: grid; grid-template-columns: 280px minmax(0, 1fr) 330px; gap: 0.75rem; padding: 0.75rem; align-items: start; }
-    @media (max-width: 1100px) { .builder-layout { grid-template-columns: 1fr; } }
-    .side-panel { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius); padding: 0.75rem; max-height: calc(100vh - 2rem); overflow-y: auto; }
-    .side-panel h2 { margin-top: 0.4rem; font-size: 1.05rem; }
-    .side-panel h3 { margin: 1rem 0 0.4rem; font-size: 0.95rem; }
-    .side-panel label { display: block; font-weight: 700; margin-top: 0.6rem; font-size: 0.9rem; }
-    .side-panel input[type="text"], .side-panel textarea, .side-panel select { width: 100%; padding: 0.4rem; box-sizing: border-box; }
-    .side-panel button { padding: 0.35rem 0.7rem; cursor: pointer; margin-top: 0.5rem; }
-    #gjs { border: 1px solid var(--color-border); border-radius: var(--radius); overflow: hidden; background: #fff; }
-    .panel-tabs { display: flex; gap: 0.4rem; margin-bottom: 0.6rem; }
-    .panel-tabs button.active { background: var(--color-primary); color: #fff; }
-    .net-field-row { border: 1px solid var(--color-border); border-radius: 8px; padding: 0.5rem; margin-top: 0.5rem; }
+    /* Builder page layout: a slim product header strip on top, then the
+       GrapesJS editor filling the rest of the viewport. All editor chrome
+       (top panel bar, blocks view, right side views) is rendered by the
+       GrapesJS Panels module into the mount points below, using the
+       default GrapesJS dark theme (its --gjs-* variables). The previous
+       hand-rolled light three-column shell was replaced for this. */
+    .builder-shell { display: flex; flex-direction: column; height: 100dvh; background: var(--gjs-main-color, #444); }
+    .app-strip { background: #333; color: #eee; padding: 0.45rem 0.8rem 0.55rem; border-bottom: 1px solid #222; }
+    .app-strip__row { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center; }
+    .app-strip__row + .app-strip__row { margin-top: 0.4rem; }
+    .app-brand { font-weight: 800; letter-spacing: 0.02em; margin-right: 0.4rem; }
+    .app-brand span { color: var(--gjs-color-highlight, #d983a6); font-weight: 600; }
+    .app-strip nav a { color: #ccc; text-decoration: none; margin-right: 0.55rem; font-size: 0.88rem; }
+    .app-strip nav a:hover { color: #fff; text-decoration: underline; }
+    .app-strip label { font-size: 0.85rem; font-weight: 600; }
+    .app-strip input[type="text"], .app-strip input[type="password"] { background: #2b2b2b; border: 1px solid #555; border-radius: 3px; color: #eee; padding: 0.32rem 0.45rem; }
+    .app-strip button { background: rgba(255,255,255,0.08); border: 1px solid #555; border-radius: 3px; color: #eee; padding: 0.32rem 0.65rem; cursor: pointer; font-size: 0.88rem; }
+    .app-strip button:hover { background: rgba(255,255,255,0.16); }
+    #unsaved { color: #f0b429; font-size: 0.88rem; font-weight: 600; }
+    #api-target { font-size: 0.85rem; color: #bbb; }
+    .token-note { font-size: 0.78rem; color: #999; max-width: 46rem; }
+    .builder-note { margin: 0.35rem 0 0; font-size: 0.8rem; color: #aaa; max-width: 110rem; }
+    .status { margin: 0; padding: 0.4rem 0.8rem; background: #2b2b2b; color: #f3e2c7; border-bottom: 1px solid #222; font-size: 0.88rem; white-space: pre-wrap; }
+    .editor-area { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+    .panel__top { display: flex; align-items: stretch; justify-content: space-between; background: var(--gjs-main-color, #444); min-height: 41px; }
+    .panel__devices, .panel__basic-actions, .panel__switcher { display: flex; align-items: center; }
+    .editor-main { display: flex; flex: 1; min-height: 0; }
+    .panel__left { width: 252px; flex: 0 0 252px; overflow-y: auto; background: var(--gjs-main-color, #444); color: var(--gjs-font-color, #ddd); border-right: 1px solid rgba(0,0,0,0.35); }
+    .panel__right { width: 272px; flex: 0 0 272px; overflow-y: auto; background: var(--gjs-main-color, #444); color: var(--gjs-font-color, #ddd); border-left: 1px solid rgba(0,0,0,0.35); }
+    .editor-view[hidden] { display: none; }
+    #gjs { flex: 1; min-width: 0; }
+    .selected-info { font-size: 0.8rem; background: rgba(0,0,0,0.22); border-bottom: 1px solid rgba(255,255,255,0.12); padding: 0.55rem 0.65rem; white-space: pre-wrap; }
+    .view-note { font-size: 0.78rem; color: #aaa; padding: 0.5rem 0.65rem; margin: 0; }
+    /* Extra tools (new element type form, AI panel) live below the blocks
+       in the left column as collapsible sections, so the Blocks view keeps
+       the official icon tile look and the extras stay one click away. */
+    .builder-extra { border-top: 1px solid rgba(255,255,255,0.14); padding: 0 0.7rem 0.8rem; }
+    .builder-extra summary { cursor: pointer; font-weight: 700; font-size: 0.92rem; padding: 0.65rem 0 0.2rem; }
+    .builder-extra p { font-size: 0.83rem; color: #bbb; }
+    .builder-extra label { display: block; font-weight: 600; margin-top: 0.55rem; font-size: 0.85rem; }
+    .builder-extra input[type="text"], .builder-extra textarea, .builder-extra select { width: 100%; padding: 0.38rem; box-sizing: border-box; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.22); border-radius: 3px; color: #eee; margin-top: 0.2rem; }
+    .builder-extra button { background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.25); border-radius: 3px; color: #eee; padding: 0.34rem 0.65rem; cursor: pointer; margin-top: 0.55rem; font-size: 0.86rem; }
+    .builder-extra button:hover { background: rgba(255,255,255,0.16); }
+    .net-field-row { border: 1px solid rgba(255,255,255,0.18); border-radius: 5px; padding: 0.5rem; margin-top: 0.5rem; }
     .net-field-row .row { display: flex; gap: 0.4rem; }
     .net-field-row .row > * { flex: 1; min-width: 0; }
-    .selected-info { font-size: 0.85rem; background: #f6f2ec; border-radius: 8px; padding: 0.5rem; margin-bottom: 0.6rem; white-space: pre-wrap; }
+    .net-field-row label { margin-top: 0.35rem; font-weight: 500; }
   </style>
 
-  <div class="builder-top">
-    <p><a href="/">Home</a> | <a href="/templates">Templates</a> | <a href="/audit">Audit</a> | <a href="/preview/home?token=demo">Draft preview demo</a></p>
-    <h1>Visual builder</h1>
-    <p class="builder-note">Builder UI: GrapesJS (BSD-3-Clause). TYPO3 is the backend through the API only, there is no builder interface inside TYPO3 BE. Each block is a TYPO3 core content element type (CType) and each trait is a tt_content field. When this app is configured with a TYPO3 content API URL, the builder loads pages and element types from that live TYPO3 and saves there with a preview token; otherwise it uses this app's same-origin demo API, labelled demo. The AI panel uses a labelled mock provider.</p>
-    <div class="toolbar" role="toolbar" aria-label="Builder toolbar">
-      <label for="page-title">Title</label>
-      <input id="page-title" type="text" />
-      <label for="page-slug">Slug</label>
-      <input id="page-slug" type="text" />
-      <button id="btn-load" type="button">Load page</button>
-      <button id="btn-local-draft" type="button">Load local draft</button>
-      <span>Device:</span>
-      <button data-device="Desktop" type="button">Desktop</button>
-      <button data-device="Tablet" type="button">Tablet</button>
-      <button data-device="Mobile" type="button">Mobile</button>
-      <button id="btn-undo" type="button">Undo</button>
-      <button id="btn-redo" type="button">Redo</button>
-      <button id="btn-save" type="button">Save draft</button>
-      <button id="btn-validate" type="button">Validate</button>
-      <button id="btn-publish" type="button">Publish</button>
-      <button id="btn-reset" type="button">Reset to fixture home</button>
-      <span id="unsaved" aria-live="polite"></span>
-    </div>
-    <div class="toolbar" role="toolbar" aria-label="TYPO3 connection">
-      <label for="typo3-token">TYPO3 token</label>
-      <input id="typo3-token" type="password" autocomplete="off" placeholder="Preview token (only needed to save to TYPO3)" size="42" />
-      <span id="api-target" style="font-size: 0.9rem;"></span>
-    </div>
-    <p style="font-size: 0.85rem; max-width: 70rem;">Tokens are minted from the TYPO3 preview secret (ASTRO_BUILDER_PREVIEW_SECRET) and are scoped: a token minted for a page slug authorizes saving that page, a token minted for the element-types scope authorizes creating element types. The token is kept in page memory only, never stored.</p>
-    <p id="status" class="status" aria-live="polite">Builder starting.</p>
-  </div>
-
-  <div class="builder-layout">
-    <aside class="side-panel" aria-label="Blocks and tools">
-      <h2>Blocks</h2>
-      <div id="blocks"></div>
-
-      <h3>New element type</h3>
-      <p style="font-size: 0.9rem;">Creating a type here registers it through <code>POST /api/v1/element-types</code>. In production TYPO3 creates the matching core element (CType) and the block appears below without a reload.</p>
-      <label for="net-id">Type id (dotted)</label>
-      <input id="net-id" type="text" placeholder="custom.pricing-table" />
-      <label for="net-label">Label</label>
-      <input id="net-label" type="text" placeholder="Pricing Table" />
-      <label for="net-category">Category</label>
-      <input id="net-category" type="text" placeholder="custom" />
-      <div id="net-fields"></div>
-      <button id="net-add-field" type="button">Add field</button>
-      <button id="net-create" type="button">Create element type</button>
-      <p id="net-result" style="font-size: 0.9rem;" aria-live="polite"></p>
-
-      <h3>AI assistant (mock)</h3>
-      <label for="ai-prompt">Describe a section or page</label>
-      <textarea id="ai-prompt" rows="3" placeholder="For example: add an faq section"></textarea>
-      <button id="btn-ai" type="button">Generate with mock AI</button>
-      <div id="ai-result" style="margin-top: 0.5rem;"></div>
-    </aside>
-
-    <main aria-label="Canvas">
-      <div id="gjs"></div>
-    </main>
-
-    <aside class="side-panel" aria-label="Traits and styles">
-      <div id="selected-info" class="selected-info">No element selected. Select a block on the canvas to edit its traits (tt_content fields).</div>
-      <div class="panel-tabs" role="tablist" aria-label="Editor panels">
-        <button id="tab-traits" type="button" class="active">Traits</button>
-        <button id="tab-styles" type="button">Styles</button>
+  <div class="builder-shell">
+    <header class="app-strip">
+      <div class="app-strip__row">
+        <span class="app-brand">AstroTYPO3 <span>Builder</span></span>
+        <nav aria-label="Builder">
+          <a href="/">Home</a><a href="/templates">Templates</a><a href="/audit">Audit</a><a href="/preview/home?token=demo">Draft preview demo</a>
+        </nav>
+        <label for="page-title">Title</label>
+        <input id="page-title" type="text" />
+        <label for="page-slug">Slug</label>
+        <input id="page-slug" type="text" />
+        <button id="btn-load" type="button">Load page</button>
+        <button id="btn-local-draft" type="button">Load local draft</button>
+        <button id="btn-reset" type="button">Reset to fixture home</button>
+        <span id="unsaved" aria-live="polite"></span>
       </div>
-      <div id="traits-box"></div>
-      <div id="styles-box" hidden></div>
-      <p style="font-size: 0.85rem;">Styles tab: GrapesJS style manager edits canvas presentation only in this demo. It is not part of the TYPO3 content contract; published styling comes from the design tokens and the Astro renderers.</p>
-    </aside>
+      <div class="app-strip__row">
+        <label for="typo3-token">TYPO3 token</label>
+        <input id="typo3-token" type="password" autocomplete="off" placeholder="Preview token (only needed to save to TYPO3)" size="42" />
+        <span id="api-target"></span>
+        <span class="token-note">Tokens are minted from the TYPO3 preview secret (ASTRO_BUILDER_PREVIEW_SECRET) and are scoped: a token minted for a page slug authorizes saving that page, a token minted for the element-types scope authorizes creating element types. The token is kept in page memory only, never stored.</span>
+      </div>
+      <p class="builder-note">Builder UI: GrapesJS (BSD-3-Clause), panels and views are GrapesJS editor chrome. TYPO3 is the backend through the API only, there is no builder interface inside TYPO3 BE. Each block is a TYPO3 core content element type (CType) and each trait is a tt_content field. When this app is configured with a TYPO3 content API URL, the builder loads pages and element types from that live TYPO3 and saves there with a preview token; otherwise it uses this app's same-origin demo API, labelled demo. The AI panel uses a labelled mock provider.</p>
+    </header>
+    <p id="status" class="status" aria-live="polite">Builder starting.</p>
+
+    <div class="editor-area">
+      <div class="panel__top">
+        <div class="panel__devices"></div>
+        <div class="panel__basic-actions"></div>
+        <div class="panel__switcher"></div>
+      </div>
+      <div class="editor-main">
+        <aside id="panel-left" class="panel__left" aria-label="Blocks and tools">
+          <div id="blocks"></div>
+
+          <details class="builder-extra" id="extra-net">
+            <summary>New element type</summary>
+            <p>Creating a type here registers it through <code>POST /api/v1/element-types</code>. In production TYPO3 creates the matching core element (CType) and the block appears below without a reload.</p>
+            <label for="net-id">Type id (dotted)</label>
+            <input id="net-id" type="text" placeholder="custom.pricing-table" />
+            <label for="net-label">Label</label>
+            <input id="net-label" type="text" placeholder="Pricing Table" />
+            <label for="net-category">Category</label>
+            <input id="net-category" type="text" placeholder="custom" />
+            <div id="net-fields"></div>
+            <button id="net-add-field" type="button">Add field</button>
+            <button id="net-create" type="button">Create element type</button>
+            <p id="net-result" aria-live="polite"></p>
+          </details>
+
+          <details class="builder-extra" id="extra-ai">
+            <summary>AI assistant (mock)</summary>
+            <label for="ai-prompt">Describe a section or page</label>
+            <textarea id="ai-prompt" rows="3" placeholder="For example: add an faq section"></textarea>
+            <button id="btn-ai" type="button">Generate with mock AI</button>
+            <div id="ai-result" style="margin-top: 0.5rem;"></div>
+          </details>
+        </aside>
+
+        <main id="gjs" aria-label="Canvas"></main>
+
+        <aside class="panel__right" aria-label="Editor views">
+          <div id="view-layers" class="editor-view" hidden>
+            <div id="layers"></div>
+          </div>
+          <div id="view-styles" class="editor-view" hidden>
+            <div id="styles-box"></div>
+            <p class="view-note">Style manager edits canvas presentation only in this demo. It is not part of the TYPO3 content contract; published styling comes from the design tokens and the Astro renderers.</p>
+          </div>
+          <div id="view-traits" class="editor-view">
+            <div id="selected-info" class="selected-info">No element selected. Select a block on the canvas to edit its traits (tt_content fields).</div>
+            <div id="traits-box"></div>
+          </div>
+        </aside>
+      </div>
+    </div>
   </div>
 
   <script type="application/json" id="builder-data" set:html={JSON.stringify({ registry, home })}></script>
@@ -121,6 +153,7 @@ const builderConfig = {
     import { buildGrapesTypes, buildGrapesBlocks, renderElementHtml, propsToAttributes, attributesToProps, defaultsForProps } from '../lib/grapesRegistry.mjs';
     import { registryToElementTypes, mergeElementTypes, elementTypeToRegistryComponent, ctypeFor, ALLOWED_FIELD_TYPES } from '../lib/elementTypes.mjs';
     import { createTypo3ApiClient, registerGrapesStorage, GRAPES_STORAGE_TYPE_ID, pageToGrapesComponents, grapesComponentsToPage, elementToComponentData, DRAFT_LOCALSTORAGE_KEY, getTypo3ApiBase } from '../lib/typo3Storage.mjs';
+    import { buildPanelsConfig, registerBuilderCommands } from '../lib/builderPanels.mjs';
     import { createDirtyTracker } from '../lib/dirtyTracking.mjs';
     import { validatePage, validateChangePlan } from '../lib/validate.mjs';
     import { auditPage } from '../lib/audit.mjs';
@@ -128,8 +161,8 @@ const builderConfig = {
     const bundled = JSON.parse(document.getElementById('builder-data').textContent);
     // API base resolves from window.__ASTRO_BUILDER_CONFIG__ (server side
     // rendered from TYPO3_CONTENT_API_URL). Empty means the demo API.
-    // The token comes from the toolbar password input and is read fresh on
-    // every write; it is never persisted anywhere.
+    // The token comes from the header strip password input and is read
+    // fresh on every write; it is never persisted anywhere.
     const client = createTypo3ApiClient({
       getToken: () => (document.getElementById('typo3-token') || {}).value || '',
     });
@@ -232,11 +265,9 @@ const builderConfig = {
       }
       const block = buildGrapesBlocks({ components: [def] })[0];
       if (!editor.BlockManager.get(block.id)) {
-        editor.BlockManager.add(block.id, { label: block.label, category: block.category, title: block.title, content: block.content });
+        editor.BlockManager.add(block.id, { label: block.label, category: block.category, title: block.title, media: block.media, content: block.content });
       }
     }
-
-
 
     function serializePage() {
       const list = [];
@@ -276,10 +307,52 @@ const builderConfig = {
       else document.getElementById('unsaved').textContent = '';
     }
 
+    // Page actions, invoked from the GrapesJS top panel buttons through
+    // the commands registered in lib/builderPanels.mjs.
+    async function saveDraft() {
+      const page = serializePage();
+      const check = validatePage(page, registryState);
+      if (!check.valid) { setStatus('Cannot save, validation failed:\n' + check.errors.join('\n')); return; }
+      localStorage.setItem(DRAFT_LOCALSTORAGE_KEY, JSON.stringify(page));
+      storageState.page = page;
+      try {
+        const out = await editor.store();
+        // A debounced increment from the last edit can still be
+        // pending at store time; settle, then reset.
+        await dirtyTracker.settleAndMarkClean();
+        setStatus('Saved draft through the typo3-api storage adapter. ' + ((out && out.notice) || ''));
+      } catch (err) {
+        setStatus('Saved to the local backup only. API save failed: ' + String(err && err.message ? err.message : err));
+      }
+    }
+
+    function validateCurrent() {
+      const page = serializePage();
+      const check = validatePage(page, registryState);
+      const findings = auditPage(page);
+      setStatus(check.valid
+        ? 'Validation passed. Audit findings: ' + findings.length + (findings.length ? ' (' + findings.map((f) => f.code).join(', ') + ')' : '')
+        : 'Validation failed:\n' + check.errors.join('\n'));
+    }
+
+    async function publishNow() {
+      try {
+        const res = await fetch('/api/publish', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ slug: pageMeta.slug }) });
+        const out = await res.json();
+        setStatus('Publish result (' + res.status + '): ' + (out.message || JSON.stringify(out)));
+      } catch (err) { setStatus('Publish failed: ' + String(err)); }
+    }
+
+    const panelHandlers = {
+      onSave: () => { void saveDraft(); },
+      onValidate: () => validateCurrent(),
+      onPublish: () => { void publishNow(); },
+    };
+
     function initEditor() {
       editor = grapesjs.init({
         container: '#gjs',
-        height: 'calc(100vh - 290px)',
+        height: '100%',
         fromElement: false,
         noticeOnUnload: false,
         storageManager: { type: GRAPES_STORAGE_TYPE_ID, autosave: false, autoload: false, stepsBeforeSave: 1 },
@@ -291,6 +364,7 @@ const builderConfig = {
           ],
         },
         blockManager: { appendTo: '#blocks' },
+        layerManager: { appendTo: '#layers' },
         traitManager: { appendTo: '#traits-box' },
         styleManager: {
           appendTo: '#styles-box',
@@ -301,13 +375,20 @@ const builderConfig = {
           ],
         },
         canvas: { styles: [canvasCssUrl] },
-        panels: { defaults: [] },
-        plugins: [(ed) => {
-          // GrapesJS 0.23.8: custom storages register via StorageManager.add,
-          // there is no Storage.addType. registerGrapesStorage is the single
-          // shared code path, also covered by tests/storage-editor.test.mjs.
-          registerGrapesStorage(ed, storageState, client);
-        }],
+        // Editor chrome comes from the Panels module: buildPanelsConfig
+        // (lib/builderPanels.mjs) defines the top bar with device
+        // buttons, basic actions and the views switcher, rendered into
+        // the .panel__top mount points above.
+        panels: buildPanelsConfig(),
+        plugins: [
+          (ed) => {
+            // GrapesJS 0.23.8: custom storages register via StorageManager.add,
+            // there is no Storage.addType. registerGrapesStorage is the single
+            // shared code path, also covered by tests/storage-editor.test.mjs.
+            registerGrapesStorage(ed, storageState, client);
+          },
+          (ed) => { registerBuilderCommands(ed, panelHandlers); },
+        ],
       });
 
       dirtyTracker = createDirtyTracker(editor, showUnsaved);
@@ -363,9 +444,6 @@ const builderConfig = {
     function wireToolbar() {
       document.getElementById('page-title').addEventListener('change', (e) => { pageMeta.title = e.target.value; markDirty(); });
       document.getElementById('page-slug').addEventListener('change', (e) => { pageMeta.slug = e.target.value.trim() || 'home'; });
-      document.querySelectorAll('[data-device]').forEach((b) => b.addEventListener('click', () => editor.setDevice(b.getAttribute('data-device'))));
-      document.getElementById('btn-undo').addEventListener('click', () => { editor.UndoManager.undo(); markDirty(); });
-      document.getElementById('btn-redo').addEventListener('click', () => { editor.UndoManager.redo(); markDirty(); });
       document.getElementById('btn-load').addEventListener('click', async () => {
         const slug = document.getElementById('page-slug').value.trim() || 'home';
         try {
@@ -392,49 +470,7 @@ const builderConfig = {
         applyPage(clone(bundled.home));
         setStatus('Canvas reset to the fixture home page.');
       });
-      document.getElementById('btn-validate').addEventListener('click', () => {
-        const page = serializePage();
-        const check = validatePage(page, registryState);
-        const findings = auditPage(page);
-        setStatus(check.valid
-          ? 'Validation passed. Audit findings: ' + findings.length + (findings.length ? ' (' + findings.map((f) => f.code).join(', ') + ')' : '')
-          : 'Validation failed:\n' + check.errors.join('\n'));
-      });
-      document.getElementById('btn-save').addEventListener('click', async () => {
-        const page = serializePage();
-        const check = validatePage(page, registryState);
-        if (!check.valid) { setStatus('Cannot save, validation failed:\n' + check.errors.join('\n')); return; }
-        localStorage.setItem(DRAFT_LOCALSTORAGE_KEY, JSON.stringify(page));
-        storageState.page = page;
-        try {
-          const out = await editor.store();
-          // A debounced increment from the last edit can still be
-          // pending at store time; settle, then reset.
-          await dirtyTracker.settleAndMarkClean();
-          setStatus('Saved draft through the typo3-api storage adapter. ' + ((out && out.notice) || ''));
-        } catch (err) {
-          setStatus('Saved to the local backup only. API save failed: ' + String(err && err.message ? err.message : err));
-        }
-      });
-      document.getElementById('btn-publish').addEventListener('click', async () => {
-        try {
-          const res = await fetch('/api/publish', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ slug: pageMeta.slug }) });
-          const out = await res.json();
-          setStatus('Publish result (' + res.status + '): ' + (out.message || JSON.stringify(out)));
-        } catch (err) { setStatus('Publish failed: ' + String(err)); }
-      });
-      const traitsBox = document.getElementById('traits-box');
-      const stylesBox = document.getElementById('styles-box');
-      document.getElementById('tab-traits').addEventListener('click', (e) => {
-        traitsBox.hidden = false; stylesBox.hidden = true;
-        e.target.classList.add('active'); document.getElementById('tab-styles').classList.remove('active');
-      });
-      document.getElementById('tab-styles').addEventListener('click', (e) => {
-        stylesBox.hidden = false; traitsBox.hidden = true;
-        e.target.classList.add('active'); document.getElementById('tab-traits').classList.remove('active');
-      });
     }
-
 
     // ---- New element type form -------------------------------------------
     function addFieldRow() {
