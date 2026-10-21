@@ -37,21 +37,21 @@ const builderConfig = {
     .app-strip button:hover { background: rgba(255,255,255,0.16); }
     #unsaved { color: #f0b429; font-size: 0.85rem; font-weight: 600; flex: 0 0 auto; }
     .status { flex: 1 1 auto; min-width: 0; margin: 0; font-size: 0.83rem; color: #f3e2c7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: right; }
-    .token-popover { position: absolute; top: calc(100% + 6px); right: 0.6rem; width: min(30rem, 94vw); background: #2b2b2b; border: 1px solid #555; border-radius: 6px; padding: 0.75rem 0.85rem; z-index: 60; box-shadow: 0 10px 30px rgba(0,0,0,0.45); white-space: normal; display: flex; flex-direction: column; gap: 0.45rem; }
+    /* The token popover is anchored to its toggle button, not to the
+       strip: the wrapper is the positioned ancestor, so the popover
+       opens directly under the button, aligned to its right edge. */
+    .token-anchor { position: relative; flex: 0 0 auto; display: flex; }
+    .token-popover { position: absolute; top: calc(100% + 6px); right: 0; width: min(30rem, 94vw); background: #2b2b2b; border: 1px solid #555; border-radius: 6px; padding: 0.75rem 0.85rem; z-index: 60; box-shadow: 0 10px 30px rgba(0,0,0,0.45); white-space: normal; display: flex; flex-direction: column; gap: 0.45rem; }
     .token-popover[hidden] { display: none; }
     .token-popover input[type="password"] { width: 100%; }
     #api-target { font-size: 0.83rem; color: #bbb; }
     .token-note { font-size: 0.78rem; color: #999; }
     .editor-area { display: flex; flex-direction: column; flex: 1; min-height: 0; }
-    /* Top panel bar order is explicit: devices left (order 1), basic
-       actions next (order 2), the views switcher pushed to the right
-       end (order 3 + margin-left auto), like the official editor. The
-       flex order applies no matter what order GrapesJS renders the
-       sub-panels into the bar. */
-    .panel__top { display: flex; align-items: stretch; background: var(--gjs-main-color, #444); min-height: 41px; }
-    .panel__devices { order: 1; display: flex; align-items: center; }
-    .panel__basic-actions { order: 2; display: flex; align-items: center; }
-    .panel__switcher { order: 3; display: flex; align-items: center; margin-left: auto; }
+    /* The top panel bar layout rules live in the is:global block below,
+       NOT here: GrapesJS's own stylesheet positions every panel
+       absolutely, and the fix has to win over that rule for the
+       JS-classed mount points (see the global block for the full
+       diagnosis). */
     .editor-main { display: flex; flex: 1; min-height: 0; }
     /* Left column: the Blocks region gets its OWN scroll area (flex 1)
        so it always starts at its true top; the extra sections below are
@@ -102,6 +102,40 @@ const builderConfig = {
        at the true top of the blocks scroll region. */
     .gjs-block-categories { margin-top: 0; padding-top: 0; }
     .gjs-block-category:first-child .gjs-title { margin-top: 0; }
+    /* Dark scrollbar for the blocks scroll region. Outside
+       .gjs-editor-cont the browser default (light) scrollbar track
+       shows as a pale sliver against the dark panel, most visible at
+       the top of the column where the track starts. */
+    #blocks { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.28) rgba(0,0,0,0.3); }
+    #blocks::-webkit-scrollbar { width: 8px; }
+    #blocks::-webkit-scrollbar-track { background: rgba(0,0,0,0.3); }
+    #blocks::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.28); border-radius: 4px; }
+    /* TOP PANEL BAR: the actual ordering mechanism, diagnosed in round
+       3 against the installed grapesjs 0.23.8 stylesheet and measured
+       in jsdom with the real CSS. GrapesJS ships
+         .gjs-pn-panel { display: inline-block; position: absolute; z-index: 3; ... }
+       and PanelView adds the gjs-pn-panel class to ALL FOUR mount
+       points: .panel__top itself and the three sub-panel mounts.
+       Absolutely positioned, the mounts are out of flow, so the flex
+       order and margin-left auto set in rounds 1 and 2 never applied
+       to layout: the bar's own height collapsed (its children are all
+       out of flow), the three mounts stacked at the same static
+       position painting in DOM order (devices first, basic actions,
+       switcher last and on top, which is why the switcher appeared at
+       the left and the devices were buried), and the floating bar
+       overlaid the first ~41px of the editor area below it, which is
+       what hid the first Blocks category title ("layout") under the
+       bar while its tiles showed below the bar's edge.
+       Fix: force the mounts back into normal flow with position
+       static (specificity 0-2-0/0-3-0 beats the theme's 0-1-0
+       .gjs-pn-panel), then the flex row works as intended: devices
+       left (order 1), basic actions next (order 2), switcher at the
+       right end (order 3 + margin-left auto). The bar keeps its real
+       height in flow, so nothing below it is overlaid any more. */
+    .builder-shell .panel__top { position: static; display: flex; align-items: stretch; background: var(--gjs-main-color, #444); min-height: 41px; }
+    .builder-shell .panel__top > .panel__devices { position: static; order: 1; display: flex; align-items: center; }
+    .builder-shell .panel__top > .panel__basic-actions { position: static; order: 2; display: flex; align-items: center; }
+    .builder-shell .panel__top > .panel__switcher { position: static; order: 3; display: flex; align-items: center; margin-left: auto; }
   </style>
 
   <div class="builder-shell">
@@ -117,15 +151,17 @@ const builderConfig = {
       <button id="btn-load" type="button">Load page</button>
       <button id="btn-local-draft" type="button">Load local draft</button>
       <button id="btn-reset" type="button" title="Reset to fixture home">Reset</button>
-      <button id="btn-token" type="button" aria-haspopup="true" aria-expanded="false">TYPO3 token</button>
+      <span class="token-anchor">
+        <button id="btn-token" type="button" aria-haspopup="true" aria-expanded="false">TYPO3 token</button>
+        <div id="token-popover" class="token-popover" hidden>
+          <label for="typo3-token">TYPO3 token</label>
+          <input id="typo3-token" type="password" autocomplete="off" placeholder="Preview token (only needed to save to TYPO3)" />
+          <span id="api-target"></span>
+          <span class="token-note">Tokens are minted from the TYPO3 preview secret (ASTRO_BUILDER_PREVIEW_SECRET) and are scoped: a token minted for a page slug authorizes saving that page, a token minted for the element-types scope authorizes creating element types. The token is kept in page memory only, never stored. Builder UI: GrapesJS (BSD-3-Clause). TYPO3 is the backend through the API only, there is no builder interface inside TYPO3 BE. Each block is a TYPO3 core content element type (CType) and each trait is a tt_content field.</span>
+        </div>
+      </span>
       <p id="status" class="status" aria-live="polite" title="">Builder starting.</p>
       <span id="unsaved" aria-live="polite"></span>
-      <div id="token-popover" class="token-popover" hidden>
-        <label for="typo3-token">TYPO3 token</label>
-        <input id="typo3-token" type="password" autocomplete="off" placeholder="Preview token (only needed to save to TYPO3)" />
-        <span id="api-target"></span>
-        <span class="token-note">Tokens are minted from the TYPO3 preview secret (ASTRO_BUILDER_PREVIEW_SECRET) and are scoped: a token minted for a page slug authorizes saving that page, a token minted for the element-types scope authorizes creating element types. The token is kept in page memory only, never stored. Builder UI: GrapesJS (BSD-3-Clause). TYPO3 is the backend through the API only, there is no builder interface inside TYPO3 BE. Each block is a TYPO3 core content element type (CType) and each trait is a tt_content field.</span>
-      </div>
     </header>
 
     <div class="editor-area">
@@ -232,7 +268,10 @@ const builderConfig = {
 
     let editor = null;
     let uid = 1000;
-    const setStatus = (msg) => { const el = document.getElementById('status'); el.textContent = msg; el.title = msg; };
+    // Status line: the visible text stays short enough to read in the
+    // slim bar (the bar ellipsises overflow, which cut the old ready
+    // text mid-URL); the full detail goes to the title attribute.
+    const setStatus = (msg, detail) => { const el = document.getElementById('status'); el.textContent = msg; el.title = detail || msg; };
     const clone = (x) => JSON.parse(JSON.stringify(x));
     function nextElementId(componentId) { uid += 1; return 'el-' + componentId.replace(/[^a-z0-9]+/gi, '-') + '-' + uid; }
 
@@ -644,9 +683,12 @@ const builderConfig = {
         // here was overwritten one tick later by the load's pending
         // increment, which is why "Unsaved changes" showed on load.
         await dirtyTracker.finishInitialization();
-        setStatus(client.base
-          ? 'Builder ready. Blocks are TYPO3 core element types, traits are their fields. Storage target: live TYPO3 at ' + client.base + '. Enter a preview token in the toolbar before saving.'
-          : 'Builder ready. Blocks are TYPO3 core element types, traits are their fields. Demo API storage: saves go to the demo endpoint in this app.');
+        setStatus(
+          client.base ? 'Builder ready. Storage: live TYPO3.' : 'Builder ready. Storage: demo API.',
+          client.base
+            ? 'Builder ready. Blocks are TYPO3 core element types, traits are their fields. Storage target: live TYPO3 at ' + client.base + '. Enter a preview token in the toolbar before saving.'
+            : 'Builder ready. Blocks are TYPO3 core element types, traits are their fields. Demo API storage: saves go to the demo endpoint in this app.',
+        );
       } catch (err) {
         setStatus('Builder failed to start: ' + String(err && err.message ? err.message : err));
       }
