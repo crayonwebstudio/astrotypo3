@@ -65,6 +65,38 @@ test('basic actions mix core commands with our save, validate and publish comman
   }
 });
 
+test('panels defaults are ordered devices, basic actions, switcher last', () => {
+  // The top bar reads left to right: devices, basic actions, then the
+  // views switcher at the right end (the page CSS pins the same order
+  // with flex order and margin-left auto on the switcher mount point).
+  const config = buildPanelsConfig();
+  assert.deepEqual(
+    config.defaults.map((p) => p.id),
+    [PANEL_IDS.top, PANEL_IDS.devices, PANEL_IDS.basicActions, PANEL_IDS.switcher],
+  );
+});
+
+test('builder page uses the slim bar with the token in a popover', () => {
+  const page = readFileSync(new URL('../src/pages/builder.astro', import.meta.url), 'utf8');
+  // Slim 52px product bar, token field moved into a toggle popover.
+  assert.ok(page.includes('flex: 0 0 52px'), 'app strip is a fixed 52px bar');
+  assert.ok(page.includes('id="btn-token"'), 'token toggle button exists');
+  assert.ok(page.includes('id="token-popover"'), 'token popover exists');
+  // The token input keeps its id and stays in the DOM (inside the
+  // popover) so the API client can read it on every write.
+  const popoverAt = page.indexOf('id="token-popover"');
+  const tokenAt = page.indexOf('id="typo3-token"');
+  assert.ok(tokenAt > popoverAt, 'token input lives inside the popover');
+  // The long explanatory paragraphs are gone from the always-visible
+  // layout (their content survives as the popover note).
+  assert.ok(!page.includes('builder-note'), 'no always-visible builder note paragraph');
+  assert.ok(!page.includes('app-strip__row'), 'no multi-row header strip');
+  // Global (unscoped) trait overrides so JS-created trait DOM is
+  // reached: full labels, full width fields.
+  assert.ok(page.includes('<style is:global>'), 'global style block present');
+  assert.ok(page.includes('.gjs-trt-trait .gjs-label'), 'trait label override present');
+});
+
 test('views switcher covers blocks, layers, styles and traits', () => {
   const switcher = panelById(buildPanelsConfig(), PANEL_IDS.switcher);
   assert.deepEqual(switcher.buttons.map((b) => b.id), ['show-blocks', 'show-layers', 'show-styles', 'show-traits']);
