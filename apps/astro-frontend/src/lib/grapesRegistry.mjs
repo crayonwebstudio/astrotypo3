@@ -17,6 +17,8 @@
 //                             string/enum as-is, number as decimal text,
 //                             boolean as "true"/"false", array/object as JSON.
 
+import { iconForComponent } from './blockIcons.mjs';
+
 export const PROP_ATTRIBUTE_PREFIX = 'data-prop-';
 
 export function propAttributeName(propName) {
@@ -224,6 +226,8 @@ export function buildGrapesBlocks(registry) {
     label: def.label,
     category: def.category || 'content',
     title: def.description || def.label,
+    // Icon tile thumbnail for the Blocks view (see lib/blockIcons.mjs).
+    media: iconForComponent(def.id),
     content: { type: def.id, attributes: propsToAttributes(def, {}) },
   }));
 }
