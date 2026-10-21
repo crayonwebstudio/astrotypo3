@@ -5,9 +5,15 @@
 // into .panel__top, with three sub-panels in defaults array order
 // (top, devices, basic actions, views switcher), which is the reading
 // order of the bar: devices on the left, basic actions next, the views
-// switcher last. The page CSS also pins that order with flex order and
-// margin-left auto on the switcher, so it sits at the right end of the
-// bar like the official editor. A Blocks view
+// switcher last. The page's global CSS turns the bar into that flex
+// row (flex order + margin-left auto on the switcher). Load bearing
+// detail, diagnosed in round 3: the GrapesJS theme styles every panel
+// .gjs-pn-panel as position absolute, which takes the mounts out of
+// flow and defeats flex ordering entirely (the mounts stack and paint
+// in DOM order, switcher on top, and the bar overlays the content
+// below). The page's global CSS therefore also resets the mounts to
+// position static; without that reset the order rules below are
+// decoration. A Blocks view
 // in the left column, and tabbed views (Layers, Style Manager, Traits)
 // in the right column, switched by the views buttons. Nothing here is a
 // hand-rolled shell: panels, buttons, active states and tooltips all
