@@ -2,8 +2,12 @@
 //
 // The builder page uses GrapesJS's own editor chrome, mirroring the
 // official editor layout: a top panel bar rendered by the Panels module
-// into .panel__top, with three sub-panels (devices on the left, basic
-// actions in the middle, the views switcher on the right), a Blocks view
+// into .panel__top, with three sub-panels in defaults array order
+// (top, devices, basic actions, views switcher), which is the reading
+// order of the bar: devices on the left, basic actions next, the views
+// switcher last. The page CSS also pins that order with flex order and
+// margin-left auto on the switcher, so it sits at the right end of the
+// bar like the official editor. A Blocks view
 // in the left column, and tabbed views (Layers, Style Manager, Traits)
 // in the right column, switched by the views buttons. Nothing here is a
 // hand-rolled shell: panels, buttons, active states and tooltips all
