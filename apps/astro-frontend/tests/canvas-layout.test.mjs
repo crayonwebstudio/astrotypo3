@@ -25,11 +25,20 @@
 //      with --gjs-left-width: 15% from :root. Our panels are mounted
 //      outside the editor (appendTo), so the canvas area was only 85%
 //      of the #gjs column and the remaining 15% on the right showed
-//      the dark editor colour. Zeroing both variables makes the canvas
-//      area the full column; centering then follows from the theme
-//      itself (.gjs-frame-wrapper is absolute with left 0, right 0 and
-//      margin auto), so Desktop fills the area and Tablet/Mobile
-//      frames centre themselves.
+//      the dark editor colour. The polish round zeroed both variables
+//      to make the canvas the full column, and the NEXT browser check
+//      found the canvas blank (iframe zero-size or off-viewport,
+//      content present in its DOM): the variable overrides were the
+//      only geometry change in that diff, so they were reverted.
+//      Regression test below pins the revert: the builder CSS must
+//      NOT override --gjs-left-width or --gjs-canvas-top to 0, and the
+//      light surround must come from background-only rules. Trade-off:
+//      Desktop fills the 85% canvas area with a light grey gutter on
+//      the right; Tablet/Mobile frames still centre via the theme's
+//      margin auto wrapper. jsdom cannot reproduce px-level frame
+//      geometry (no layout engine); what is asserted is the cascade
+//      that determines it, and the real-browser check is the parent
+//      agent's re-test.
 //   3. Every component's layer 'open' attribute is unset by default.
 //      The fix (lib/layerExpand.mjs) walks the tree with the
 //      documented LayerManager API (setOpen / getComponents) and opens
@@ -158,12 +167,27 @@ test('canvas surround is the demo light grey, not the dark theme colour', () => 
   assert.equal(cs(editorEl).backgroundColor, 'rgb(230, 230, 230)', 'editor behind the canvas is #e6e6e6 too, so no dark shows through');
 });
 
-test('canvas sizing variables are zeroed so the canvas area is the full column', () => {
-  const gjs = dom.window.document.querySelector('#gjs');
-  // Theme default --gjs-left-width is 15% (default-layout left panel
-  // inside the editor); our panels live outside, so it must be 0.
-  assert.equal(cs(gjs).getPropertyValue('--gjs-left-width').trim(), '0', 'left width variable zeroed');
-  assert.equal(cs(gjs).getPropertyValue('--gjs-canvas-top').trim(), '0', 'canvas top variable zeroed');
+test('canvas sizing variables are NOT overridden to 0 (blank-canvas regression)', () => {
+  // Regression (26 Oct 2026): zeroing --gjs-left-width and
+  // --gjs-canvas-top on #gjs was the only geometry change in the
+  // polish diff, and the next browser check found the canvas blank
+  // (iframe zero-size or off-viewport, content present in its DOM).
+  // The overrides are reverted: the builder CSS must not set either
+  // variable to 0 anywhere, so the canvas keeps the theme default
+  // geometry (85% wide, top 40px) that the demo-layout build rendered
+  // with. The light surround comes from background-only rules only
+  // (asserted in the surround test above), which cannot affect box
+  // geometry.
+  assert.doesNotMatch(globalCss, /--gjs-left-width\s*:\s*0\b/, 'no left-width override to 0 in the global block');
+  assert.doesNotMatch(globalCss, /--gjs-canvas-top\s*:\s*0\b/, 'no canvas-top override to 0 in the global block');
+  assert.doesNotMatch(scopedCss, /--gjs-left-width\s*:\s*0\b/, 'no left-width override to 0 in the scoped block');
+  assert.doesNotMatch(scopedCss, /--gjs-canvas-top\s*:\s*0\b/, 'no canvas-top override to 0 in the scoped block');
+  // And the theme defaults themselves are still what the canvas rule
+  // resolves against.
+  assert.match(grapesCss, /--gjs-left-width:\s*15%/, 'theme left-width default is 15%');
+  assert.match(grapesCss, /--gjs-canvas-top:\s*40px/, 'theme canvas-top default is 40px');
+  // The frame centering mechanism itself is unchanged.
+  assert.match(grapesCss, /\.gjs-frame-wrapper\{[^}]*left:0;right:0;margin:auto/, 'theme frame wrapper is left 0, right 0, margin auto');
 });
 
 test('frame centering mechanism: theme wrapper is margin auto, device widths are explicit except Desktop', () => {
