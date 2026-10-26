@@ -11,6 +11,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { readFileSync } from 'node:fs';
+import { JSDOM } from 'jsdom';
 import { buildPanelsConfig, registerBuilderCommands, PANEL_IDS, COMMAND_IDS, RIGHT_VIEWS } from '../src/lib/builderPanels.mjs';
 import { buildGrapesBlocks } from '../src/lib/grapesRegistry.mjs';
 import { iconForComponent, GENERIC_BLOCK_ICON } from '../src/lib/blockIcons.mjs';
@@ -65,23 +66,40 @@ test('basic actions mix core commands with our save, validate and publish comman
   }
 });
 
-test('panels defaults are ordered devices, basic actions, switcher last', () => {
-  // The top bar reads left to right: devices, basic actions, then the
-  // views switcher at the right end (the page CSS pins the same order
-  // with flex order and margin-left auto on the switcher mount point).
+test('panels defaults order is unchanged; product slot sits between devices and actions in the page', () => {
+  // The GrapesJS panels config itself is unchanged (top, devices,
+  // basic actions, switcher): the product controls are plain HTML in
+  // a .panel__product slot inside the bar, not a GrapesJS panel, so
+  // they do not appear in the config. The page CSS pins the full bar
+  // reading order: devices, product, basic actions, switcher at the
+  // right end (flex order + margin-left auto on the switcher mount).
   const config = buildPanelsConfig();
   assert.deepEqual(
     config.defaults.map((p) => p.id),
     [PANEL_IDS.top, PANEL_IDS.devices, PANEL_IDS.basicActions, PANEL_IDS.switcher],
   );
+  const page = readFileSync(new URL('../src/pages/builder.astro', import.meta.url), 'utf8');
+  const order = ['class="panel__top"', 'class="panel__devices"', 'class="panel__product"', 'class="panel__basic-actions"', 'class="panel__switcher"']
+    .map((marker) => page.indexOf(marker));
+  assert.ok(order.every((at) => at >= 0), 'all bar slots present in the page');
+  assert.deepEqual([...order].sort((a, b) => a - b), order, 'bar slots in DOM order devices, product, actions, switcher');
 });
 
-test('builder page uses the slim bar with the token in a popover', () => {
+test('builder page uses ONE top bar with the product controls inside it', () => {
   const page = readFileSync(new URL('../src/pages/builder.astro', import.meta.url), 'utf8');
-  // Slim 52px product bar, token field moved into a toggle popover.
-  assert.ok(page.includes('flex: 0 0 52px'), 'app strip is a fixed 52px bar');
-  assert.ok(page.includes('id="btn-token"'), 'token toggle button exists');
-  assert.ok(page.includes('id="token-popover"'), 'token popover exists');
+  // The separate 52px product strip is gone: no app strip element, no
+  // fixed 52px bar rule, no header strip.
+  assert.ok(!page.includes('app-strip'), 'no separate product strip');
+  assert.ok(!page.includes('flex: 0 0 52px'), 'no fixed 52px bar');
+  assert.ok(!page.includes('<header'), 'no header strip element');
+  // Every product control keeps its id and lives inside the product
+  // slot, between the devices mount and the basic actions mount.
+  const productAt = page.indexOf('class="panel__product"');
+  const actionsAt = page.indexOf('class="panel__basic-actions"');
+  for (const id of ['page-title', 'page-slug', 'btn-load', 'btn-local-draft', 'btn-reset', 'btn-token', 'token-popover', 'typo3-token', 'status', 'unsaved']) {
+    const at = page.indexOf('id="' + id + '"');
+    assert.ok(at > productAt && at < actionsAt, 'control inside the product slot: ' + id);
+  }
   // The token input keeps its id and stays in the DOM (inside the
   // popover) so the API client can read it on every write.
   const popoverAt = page.indexOf('id="token-popover"');
@@ -90,11 +108,34 @@ test('builder page uses the slim bar with the token in a popover', () => {
   // The long explanatory paragraphs are gone from the always-visible
   // layout (their content survives as the popover note).
   assert.ok(!page.includes('builder-note'), 'no always-visible builder note paragraph');
-  assert.ok(!page.includes('app-strip__row'), 'no multi-row header strip');
   // Global (unscoped) trait overrides so JS-created trait DOM is
   // reached: full labels, full width fields.
   assert.ok(page.includes('<style is:global>'), 'global style block present');
   assert.ok(page.includes('.gjs-trt-trait .gjs-label'), 'trait label override present');
+});
+
+test('builder page arrangement matches the demo: layers left, blocks right by default', () => {
+  const page = readFileSync(new URL('../src/pages/builder.astro', import.meta.url), 'utf8');
+  const leftAt = page.indexOf('id="panel-left"');
+  const canvasAt = page.indexOf('id="gjs"');
+  const rightAt = page.indexOf('class="panel__right"');
+  // Layers mount lives in the left column, before the canvas.
+  const layersAt = page.indexOf('id="layers"');
+  assert.ok(layersAt > leftAt && layersAt < canvasAt, 'layers mount in the left column');
+  // Blocks mount lives in the right column, inside the blocks view.
+  const blocksViewAt = page.indexOf('id="view-blocks"');
+  const blocksAt = page.indexOf('id="blocks"');
+  assert.ok(blocksViewAt > rightAt && blocksAt > blocksViewAt, 'blocks mount inside the right blocks view');
+  // Blocks is the default right view; Styles and Traits start hidden.
+  assert.ok(page.includes('<div id="view-blocks" class="editor-view">'), 'blocks view visible by default');
+  assert.ok(page.includes('<div id="view-styles" class="editor-view" hidden>'), 'styles view hidden by default');
+  assert.ok(page.includes('<div id="view-traits" class="editor-view" hidden>'), 'traits view hidden by default');
+  // The extra tools sit below Layers in the left column, after the
+  // layers mount and before the canvas.
+  for (const id of ['extra-net', 'extra-ai']) {
+    const at = page.indexOf('id="' + id + '"');
+    assert.ok(at > layersAt && at < canvasAt, 'extra tool below layers in the left column: ' + id);
+  }
 });
 
 test('round 3 page fixes: global panel position reset, token anchor, short status', () => {
@@ -129,10 +170,14 @@ test('views switcher covers blocks, layers, styles and traits', () => {
     switcher.buttons.map((b) => b.command),
     [COMMAND_IDS.showBlocks, COMMAND_IDS.showLayers, COMMAND_IDS.showStyles, COMMAND_IDS.showTraits],
   );
-  // Blocks (left column) and Traits (default right view) start active.
+  // Demo arrangement: Layers (left column) and Blocks (default right
+  // view) start active. Styles and Traits start inactive; the old
+  // arrangement had Traits as the default right view instead.
   assert.equal(switcher.buttons.find((b) => b.id === 'show-blocks').active, true);
-  assert.equal(switcher.buttons.find((b) => b.id === 'show-traits').active, true);
-  assert.deepEqual(Object.keys(RIGHT_VIEWS).sort(), ['layers', 'styles', 'traits']);
+  assert.equal(switcher.buttons.find((b) => b.id === 'show-layers').active, true);
+  assert.equal(switcher.buttons.find((b) => b.id === 'show-styles').active, undefined);
+  assert.equal(switcher.buttons.find((b) => b.id === 'show-traits').active, undefined);
+  assert.deepEqual(Object.keys(RIGHT_VIEWS).sort(), ['blocks', 'styles', 'traits']);
 });
 
 test('every registry component block carries an SVG icon as its media', () => {
@@ -207,8 +252,51 @@ test('toggle commands define stop, momentary actions do not', () => {
   const devices = config.defaults.find((p) => p.id === PANEL_IDS.devices);
   assert.ok(devices.buttons.every((b) => b.context === 'builder-device'));
   const switcher = config.defaults.find((p) => p.id === PANEL_IDS.switcher);
-  assert.equal(switcher.buttons.find((b) => b.id === 'show-blocks').context, 'builder-left-view');
-  for (const id of ['show-layers', 'show-styles', 'show-traits']) {
+  // Demo arrangement: the left column toggle is Layers, the right
+  // column toggles are Blocks, Styles and Traits (the old arrangement
+  // had Blocks on the left and Layers on the right).
+  assert.equal(switcher.buttons.find((b) => b.id === 'show-layers').context, 'builder-left-view');
+  for (const id of ['show-blocks', 'show-styles', 'show-traits']) {
     assert.equal(switcher.buttons.find((b) => b.id === id).context, 'builder-right-view');
+  }
+});
+
+test('view toggle commands show and hide their own view (run/stop contract)', () => {
+  // The page relies on this contract: a view command's run shows its
+  // view, its stop hides it again, and the Panels machinery calls stop
+  // on the previously active button when a sibling in the same context
+  // group is activated. Exercised against a real DOM so a regression
+  // in the selector wiring (left panel vs right views) is caught.
+  const dom = new JSDOM(`<!doctype html><body>
+    <aside id="panel-left"></aside>
+    <div id="view-blocks"></div>
+    <div id="view-styles" hidden></div>
+    <div id="view-traits" hidden></div>
+  </body>`);
+  const prevDocument = globalThis.document;
+  globalThis.document = dom.window.document;
+  try {
+    const added = new Map();
+    const fakeEditor = { Commands: { add: (id, cmd) => added.set(id, cmd) }, setDevice: () => {} };
+    registerBuilderCommands(fakeEditor, {});
+    const view = (id) => dom.window.document.querySelector(id);
+    // Right views: run shows, stop hides.
+    added.get(COMMAND_IDS.showStyles).run();
+    assert.equal(view('#view-styles').hidden, false, 'styles shown by run');
+    added.get(COMMAND_IDS.showStyles).stop();
+    assert.equal(view('#view-styles').hidden, true, 'styles hidden by stop');
+    // Switching right views: activating Styles stops Blocks.
+    added.get(COMMAND_IDS.showBlocks).run();
+    assert.equal(view('#view-blocks').hidden, false, 'blocks shown by run');
+    added.get(COMMAND_IDS.showBlocks).stop();
+    assert.equal(view('#view-blocks').hidden, true, 'blocks hidden by stop');
+    // Left column: Layers toggles the whole left panel.
+    added.get(COMMAND_IDS.showLayers).stop();
+    assert.equal(view('#panel-left').hidden, true, 'left panel hidden by layers stop');
+    added.get(COMMAND_IDS.showLayers).run();
+    assert.equal(view('#panel-left').hidden, false, 'left panel shown by layers run');
+  } finally {
+    if (prevDocument === undefined) delete globalThis.document;
+    else globalThis.document = prevDocument;
   }
 });
