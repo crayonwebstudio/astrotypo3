@@ -1,23 +1,26 @@
 // GrapesJS Panels configuration and builder commands.
 //
 // The builder page uses GrapesJS's own editor chrome, mirroring the
-// official editor layout: a top panel bar rendered by the Panels module
-// into .panel__top, with three sub-panels in defaults array order
-// (top, devices, basic actions, views switcher), which is the reading
-// order of the bar: devices on the left, basic actions next, the views
-// switcher last. The page's global CSS turns the bar into that flex
-// row (flex order + margin-left auto on the switcher). Load bearing
-// detail, diagnosed in round 3: the GrapesJS theme styles every panel
-// .gjs-pn-panel as position absolute, which takes the mounts out of
-// flow and defeats flex ordering entirely (the mounts stack and paint
-// in DOM order, switcher on top, and the bar overlays the content
-// below). The page's global CSS therefore also resets the mounts to
-// position static; without that reset the order rules below are
-// decoration. A Blocks view
-// in the left column, and tabbed views (Layers, Style Manager, Traits)
-// in the right column, switched by the views buttons. Nothing here is a
-// hand-rolled shell: panels, buttons, active states and tooltips all
-// come from editor.Panels and editor.Commands.
+// official free core webpage-preset demo layout (grapesjs.com/demo.html):
+// ONE top panel bar rendered by the Panels module into .panel__top.
+// The bar reads left to right: devices, then the product controls
+// (plain HTML in a .panel__product slot inside the bar, not a GrapesJS
+// panel), then basic actions, then the views switcher at the right
+// end. The left column holds Layers (plus the extra tools below it);
+// the right column holds Blocks by default, with Style Manager and
+// Traits as switchable right views. The page's global CSS turns the
+// bar into that flex row (flex order + margin-left auto on the
+// switcher). Load bearing detail, diagnosed in round 3: the GrapesJS
+// theme styles every panel .gjs-pn-panel as position absolute, which
+// takes the mounts out of flow and defeats flex ordering entirely
+// (the mounts stack and paint in DOM order, switcher on top, and the
+// bar overlays the content below). The page's global CSS therefore
+// also resets the mounts to position static; without that reset the
+// order rules below are decoration. Nothing here is a hand-rolled
+// shell: panels, buttons, active states and tooltips all come from
+// editor.Panels and editor.Commands. Only the product controls are
+// plain HTML, because they are our TYPO3 page controls, not editor
+// commands.
 //
 // Command ids: device and view switching plus our own actions
 // (Save draft, Validate, Publish) are registered by
@@ -118,10 +121,10 @@ export function buildPanelsConfig() {
         el: '.panel__switcher',
         resizable: false,
         buttons: [
-          { id: 'show-blocks', label: ICONS.blocks, command: COMMAND_IDS.showBlocks, context: 'builder-left-view', active: true, attributes: { title: 'Blocks panel' } },
-          { id: 'show-layers', label: ICONS.layers, command: COMMAND_IDS.showLayers, context: 'builder-right-view', attributes: { title: 'Layers' } },
+          { id: 'show-blocks', label: ICONS.blocks, command: COMMAND_IDS.showBlocks, context: 'builder-right-view', active: true, attributes: { title: 'Blocks panel' } },
+          { id: 'show-layers', label: ICONS.layers, command: COMMAND_IDS.showLayers, context: 'builder-left-view', active: true, attributes: { title: 'Layers' } },
           { id: 'show-styles', label: ICONS.styles, command: COMMAND_IDS.showStyles, context: 'builder-right-view', attributes: { title: 'Style manager' } },
-          { id: 'show-traits', label: ICONS.traits, command: COMMAND_IDS.showTraits, context: 'builder-right-view', active: true, attributes: { title: 'Traits (element fields)' } },
+          { id: 'show-traits', label: ICONS.traits, command: COMMAND_IDS.showTraits, context: 'builder-right-view', attributes: { title: 'Traits (element fields)' } },
         ],
       },
     ],
@@ -129,11 +132,11 @@ export function buildPanelsConfig() {
 }
 
 // Right column views, keyed by the switcher button that opens them.
-// The Blocks view lives in the left column and is toggled independently,
-// exactly like the official editor where blocks can be hidden while a
-// right side view stays open.
+// Blocks is the default right view; Layers lives in the left column
+// and is toggled independently, so hiding it never disturbs the right
+// side view that is open.
 export const RIGHT_VIEWS = {
-  layers: '#view-layers',
+  blocks: '#view-blocks',
   styles: '#view-styles',
   traits: '#view-traits',
 };
@@ -169,7 +172,7 @@ export function registerBuilderCommands(editor, handlers = {}) {
   editor.Commands.add(COMMAND_IDS.deviceTablet, device('Tablet'));
   editor.Commands.add(COMMAND_IDS.deviceMobile, device('Mobile'));
 
-  editor.Commands.add(COMMAND_IDS.showBlocks, {
+  editor.Commands.add(COMMAND_IDS.showLayers, {
     run() { setViewVisible(LEFT_PANEL_SELECTOR, true); },
     stop() { setViewVisible(LEFT_PANEL_SELECTOR, false); },
   });
@@ -177,7 +180,7 @@ export function registerBuilderCommands(editor, handlers = {}) {
     run() { setViewVisible(selector, true); },
     stop() { setViewVisible(selector, false); },
   });
-  editor.Commands.add(COMMAND_IDS.showLayers, rightView(RIGHT_VIEWS.layers));
+  editor.Commands.add(COMMAND_IDS.showBlocks, rightView(RIGHT_VIEWS.blocks));
   editor.Commands.add(COMMAND_IDS.showStyles, rightView(RIGHT_VIEWS.styles));
   editor.Commands.add(COMMAND_IDS.showTraits, rightView(RIGHT_VIEWS.traits));
 
