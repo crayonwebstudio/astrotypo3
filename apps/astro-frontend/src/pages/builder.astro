@@ -163,35 +163,60 @@ const builderConfig = {
     .builder-shell .panel__top > .panel__product { order: 2; display: flex; align-items: center; min-width: 0; }
     .builder-shell .panel__top > .panel__basic-actions { position: static; order: 3; display: flex; align-items: center; }
     .builder-shell .panel__top > .panel__switcher { position: static; order: 4; display: flex; align-items: center; margin-left: auto; }
-    /* CANVAS SURROUND AND CENTERING, diagnosed in the demo-layout
-       polish round against the installed grapesjs 0.23.8 stylesheet
-       and measured in jsdom with the real CSS (see
-       tests/canvas-layout.test.mjs). Two theme defaults conspire
-       against our custom-UI layout (panels mounted outside the editor
-       via appendTo, not inside it):
-       (a) The editor div inside #gjs carries the dark theme colour
-       (#444 via .gjs-one-bg) and the canvas element on top of it
-       carries .gjs-cv-canvas-bg { background-color: rgba(0,0,0,.15) },
-       so the translucent layer over the dark editor reads as a dark
-       grey surround, and the #e6e6e6 on #gjs itself never shows.
-       (b) The canvas element sizes itself from theme variables meant
-       for the DEFAULT layout, where the left panel lives inside the
-       editor: .gjs-cv-canvas { width: calc(100% - var(--gjs-left-width)) }
-       with --gjs-left-width: 15% from :root, so our canvas area is
-       only 85% of the #gjs column and the remaining 15% on the right
-       shows the dark editor colour: the white page sits against the
-       left panel with a dark gutter on its right, exactly as observed.
-       Fix, scoped to this builder only: zero both variables so the
-       canvas area is the full #gjs column, and paint the canvas
-       element and the editor behind it the demo's light grey
-       (#e6e6e6). Centering then follows from the theme itself: the
-       frame wrapper is position absolute with left 0, right 0 and
-       margin auto, so at Desktop (device width '', frame fills the
-       area) the page fills the canvas, and at Tablet (768px) and
-       Mobile (390px) the narrower frame centres itself. The white
-       page itself is untouched: it is the canvas iframe body
-       (background #fff from the frame stylesheet), not these rules. */
-    .builder-shell #gjs { --gjs-left-width: 0; --gjs-canvas-top: 0; }
+    /* CANVAS SURROUND, after the blank-canvas regression (26 Oct 2026).
+       Regression, browser-verified twice on the live build: after the
+       demo-layout polish deploy, the centre canvas rendered blank
+       white in screenshots. Content was NOT missing (status ready,
+       Layers tree showed Body with 8 components, the canvas iframe
+       DOM held the full home page), but the iframe itself measured
+       zero-size or off-viewport while the outer #gjs container
+       (about x=231, y=42, w=1400, h=1038 at 1920x1080) was visible.
+       Traced mechanism, from the installed grapesjs 0.23.8 stylesheet
+       and source (see tests/canvas-layout.test.mjs for the jsdom
+       evidence): the canvas chain is #gjs (inline height 100% from
+       the height config, flex item of .editor-main) > .gjs-editor
+       (position relative, height 100%) > .gjs-cv-canvas
+       (position absolute, left 0, top var(--gjs-canvas-top),
+       width calc(100% - var(--gjs-left-width)),
+       height calc(100% - var(--gjs-canvas-top)), overflow hidden)
+       > .gjs-cv-canvas__frames (absolute, 100% x 100%)
+       > .gjs-frame-wrapper (absolute, left 0, right 0, margin auto,
+       width/height 100% unless the frame model sets inline device
+       dimensions) > .gjs-frame (absolute, 100% x 100%). The theme
+       defaults are --gjs-left-width: 15% and --gjs-canvas-top: 40px
+       from :root, sized for the DEFAULT layout where the left panel
+       lives inside the editor. The polish round was the only geometry
+       change in the diff (see below), so by elimination its variable
+       overrides are the suspect: zeroing both variables moved the
+       canvas to top 0 and full column width, away from the geometry
+       the demo-layout build had rendered fine with.
+       Ruled out: src/lib/layerExpand.mjs only calls
+       Layers.setOpen/getComponents and never touches canvas, frames
+       or styles, so it cannot affect canvas geometry; the background
+       rules below are paint-only and cannot affect box geometry.
+       Honest limit: jsdom has no layout engine, so no px-level
+       blanking mechanism could be reproduced there (the cascade
+       measured correctly: variables 0, canvas calc 100%), and the
+       real-browser confirmation of this fix is the parent agent's
+       re-test step. If the canvas is STILL blank after this revert,
+       the variables are exonerated and the cause lies outside this
+       diff (frame load timing or device frame sizing at first paint),
+       not in these rules.
+       Fix, smallest change: REVERT the two variable overrides, so
+       the canvas geometry is exactly the theme default geometry the
+       demo-layout build rendered with (canvas 85% wide, top 40px).
+       The light grey surround is kept ONLY through the two
+       background rules below, which cannot affect geometry: the
+       editor behind the canvas and the canvas element itself are
+       #e6e6e6, so the 15% strip on the right and the 40px strip on
+       top read as light grey surround instead of the dark theme
+       colour. Trade-off, stated plainly: at Desktop the page fills
+       the 85% canvas area (left aligned within the column, light
+       grey gutter on its right) instead of the full column; Tablet
+       (768px) and Mobile (390px) frames still centre themselves
+       inside the canvas area via the theme's margin auto wrapper.
+       The white page itself is untouched: it is the canvas iframe
+       body (background #fff from the frame stylesheet). */
     .builder-shell #gjs .gjs-editor { background-color: #e6e6e6; }
     .builder-shell #gjs .gjs-cv-canvas { background-color: #e6e6e6; }
   </style>
