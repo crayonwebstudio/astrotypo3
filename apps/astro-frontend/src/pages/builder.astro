@@ -76,9 +76,9 @@ const builderConfig = {
     #blocks { padding-top: 0.45rem; }
     .editor-view[hidden] { display: none; }
     /* Canvas surround: the demo shows the white page centred on a
-       light grey surround. The canvas frame itself is GrapesJS chrome
-       (its background is a dark translucent layer); the shell behind
-       it is light grey so the page reads as a page on a desk. */
+       light grey surround. #gjs itself is light grey, but the theme
+       paints over it (dark editor + translucent canvas layer), so
+       the effective surround is set by the global overrides below. */
     #gjs { flex: 1; min-width: 0; background: #e6e6e6; }
     .selected-info { font-size: 0.8rem; background: rgba(0,0,0,0.22); border-bottom: 1px solid rgba(255,255,255,0.12); padding: 0.55rem 0.65rem; white-space: pre-wrap; }
     .view-note { font-size: 0.78rem; color: #aaa; padding: 0.5rem 0.65rem; margin: 0; }
@@ -163,6 +163,37 @@ const builderConfig = {
     .builder-shell .panel__top > .panel__product { order: 2; display: flex; align-items: center; min-width: 0; }
     .builder-shell .panel__top > .panel__basic-actions { position: static; order: 3; display: flex; align-items: center; }
     .builder-shell .panel__top > .panel__switcher { position: static; order: 4; display: flex; align-items: center; margin-left: auto; }
+    /* CANVAS SURROUND AND CENTERING, diagnosed in the demo-layout
+       polish round against the installed grapesjs 0.23.8 stylesheet
+       and measured in jsdom with the real CSS (see
+       tests/canvas-layout.test.mjs). Two theme defaults conspire
+       against our custom-UI layout (panels mounted outside the editor
+       via appendTo, not inside it):
+       (a) The editor div inside #gjs carries the dark theme colour
+       (#444 via .gjs-one-bg) and the canvas element on top of it
+       carries .gjs-cv-canvas-bg { background-color: rgba(0,0,0,.15) },
+       so the translucent layer over the dark editor reads as a dark
+       grey surround, and the #e6e6e6 on #gjs itself never shows.
+       (b) The canvas element sizes itself from theme variables meant
+       for the DEFAULT layout, where the left panel lives inside the
+       editor: .gjs-cv-canvas { width: calc(100% - var(--gjs-left-width)) }
+       with --gjs-left-width: 15% from :root, so our canvas area is
+       only 85% of the #gjs column and the remaining 15% on the right
+       shows the dark editor colour: the white page sits against the
+       left panel with a dark gutter on its right, exactly as observed.
+       Fix, scoped to this builder only: zero both variables so the
+       canvas area is the full #gjs column, and paint the canvas
+       element and the editor behind it the demo's light grey
+       (#e6e6e6). Centering then follows from the theme itself: the
+       frame wrapper is position absolute with left 0, right 0 and
+       margin auto, so at Desktop (device width '', frame fills the
+       area) the page fills the canvas, and at Tablet (768px) and
+       Mobile (390px) the narrower frame centres itself. The white
+       page itself is untouched: it is the canvas iframe body
+       (background #fff from the frame stylesheet), not these rules. */
+    .builder-shell #gjs { --gjs-left-width: 0; --gjs-canvas-top: 0; }
+    .builder-shell #gjs .gjs-editor { background-color: #e6e6e6; }
+    .builder-shell #gjs .gjs-cv-canvas { background-color: #e6e6e6; }
   </style>
 
   <div class="builder-shell">
@@ -252,6 +283,7 @@ const builderConfig = {
     import { createTypo3ApiClient, registerGrapesStorage, GRAPES_STORAGE_TYPE_ID, pageToGrapesComponents, grapesComponentsToPage, elementToComponentData, DRAFT_LOCALSTORAGE_KEY, getTypo3ApiBase } from '../lib/typo3Storage.mjs';
     import { buildPanelsConfig, registerBuilderCommands } from '../lib/builderPanels.mjs';
     import { createDirtyTracker } from '../lib/dirtyTracking.mjs';
+    import { expandLayers } from '../lib/layerExpand.mjs';
     import { validatePage, validateChangePlan } from '../lib/validate.mjs';
     import { auditPage } from '../lib/audit.mjs';
 
@@ -375,6 +407,10 @@ const builderConfig = {
       return grapesComponentsToPage(list, pageMeta, registryState);
     }
 
+    // Layers tree auto-expand lives in lib/layerExpand.mjs (shared
+    // with tests): expandLayers(editor) opens every layer that has
+    // children, so Body and its children are visible immediately
+    // after a page loads instead of collapsed ("Body - 8" only).
     function applyPage(page) {
       storageState.page = page;
       pageMeta.id = page.id || pageMeta.id;
@@ -386,6 +422,10 @@ const builderConfig = {
       document.getElementById('page-title').value = pageMeta.title;
       document.getElementById('page-slug').value = pageMeta.slug;
       editor.setComponents(pageToGrapesComponents(page, registryState));
+      // setComponents rebuilds the layer tree collapsed; expand it
+      // again on every page load (initial, Load page, local draft,
+      // Reset, template apply all flow through here).
+      expandLayers(editor);
     }
 
     // Dirty tracking lives in lib/dirtyTracking.mjs. GrapesJS 0.23.8
@@ -492,6 +532,11 @@ const builderConfig = {
       });
 
       dirtyTracker = createDirtyTracker(editor, showUnsaved);
+
+      // If the editor 'load' event fires after a page is already in
+      // the canvas (LayerManager sets its root on 'load'), expand the
+      // tree then too; applyPage's own call covers the normal order.
+      editor.on('load', () => expandLayers(editor));
 
       for (const def of registryState.components) registerComponentType(def);
 
