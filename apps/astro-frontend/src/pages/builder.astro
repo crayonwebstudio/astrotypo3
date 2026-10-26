@@ -15,31 +15,38 @@ const builderConfig = {
 ---
 <BaseLayout title="Visual builder: AstroTYPO3" description="GrapesJS visual builder for AstroTYPO3, connected to TYPO3 through the content API.">
   <style>
-    /* Builder page layout: ONE slim product bar (52px) on top, then the
-       GrapesJS editor filling the rest of the viewport (100dvh minus the
-       bar, no page level scroll). All editor chrome (top panel bar,
-       blocks view, right side views) is rendered by the GrapesJS Panels
+    /* Builder page layout, matching the official free core
+       webpage-preset demo (grapesjs.com/demo.html): ONE top bar only,
+       then the editor filling the rest of the viewport (100dvh, no
+       page level scroll). There is no separate product strip any more:
+       the product controls live inside the single top bar row, in the
+       .panel__product slot between the device buttons and the basic
+       actions. All editor chrome is rendered by the GrapesJS Panels
        module into the mount points below, using the default GrapesJS
-       dark theme (its --gjs-* variables). The TYPO3 token lives in a
-       popover toggled from the bar, not in the always-visible layout. */
+       dark theme (its --gjs-* variables: main #444, font #ddd). The
+       TYPO3 token lives in a popover toggled from the bar, not in the
+       always-visible layout. Left column: Layers. Right column:
+       Blocks by default, Styles and Traits as switchable views. */
     .builder-shell { display: flex; flex-direction: column; height: 100dvh; background: var(--gjs-main-color, #444); }
-    .app-strip { position: relative; flex: 0 0 52px; height: 52px; box-sizing: border-box; display: flex; align-items: center; gap: 0.5rem; padding: 0 0.7rem; background: #333; color: #eee; border-bottom: 1px solid #222; white-space: nowrap; }
-    .app-brand { font-weight: 800; letter-spacing: 0.02em; flex: 0 0 auto; }
-    .app-brand span { color: var(--gjs-color-highlight, #d983a6); font-weight: 600; }
-    .app-strip nav { flex: 0 0 auto; }
-    .app-strip nav a { color: #ccc; text-decoration: none; margin-right: 0.45rem; font-size: 0.82rem; }
-    .app-strip nav a:hover { color: #fff; text-decoration: underline; }
-    .app-strip label { font-size: 0.8rem; font-weight: 600; flex: 0 0 auto; }
-    .app-strip input[type="text"], .app-strip input[type="password"] { background: #2b2b2b; border: 1px solid #555; border-radius: 3px; color: #eee; padding: 0.26rem 0.4rem; font-size: 0.85rem; box-sizing: border-box; }
-    #page-title { width: 8.5rem; }
-    #page-slug { width: 5rem; }
-    .app-strip button { background: rgba(255,255,255,0.08); border: 1px solid #555; border-radius: 3px; color: #eee; padding: 0.26rem 0.55rem; cursor: pointer; font-size: 0.82rem; flex: 0 0 auto; }
-    .app-strip button:hover { background: rgba(255,255,255,0.16); }
+    /* Product controls inside the single top bar. Plain HTML, not a
+       GrapesJS panel: these are our TYPO3 page controls, and they keep
+       their ids so every existing handler keeps working. At narrow
+       widths (1100px and below) this slot wraps onto the bar's second
+       line; it is never a second permanent bar. */
+    .panel__product { display: flex; align-items: center; gap: 0.5rem; padding: 0 0.35rem; color: #eee; white-space: nowrap; min-width: 0; }
+    .app-brand { font-weight: 800; letter-spacing: 0.02em; flex: 0 0 auto; font-size: 0.92rem; }
+    .app-brand span { color: var(--gjs-color-highlight, #71b7f1); font-weight: 600; }
+    .panel__product label { font-size: 0.8rem; font-weight: 600; flex: 0 0 auto; }
+    .panel__product input[type="text"], .panel__product input[type="password"] { background: #2b2b2b; border: 1px solid #555; border-radius: 3px; color: #eee; padding: 0.26rem 0.4rem; font-size: 0.85rem; box-sizing: border-box; }
+    #page-title { width: 7rem; }
+    #page-slug { width: 4.5rem; }
+    .panel__product button { background: rgba(255,255,255,0.08); border: 1px solid #555; border-radius: 3px; color: #eee; padding: 0.26rem 0.55rem; cursor: pointer; font-size: 0.82rem; flex: 0 0 auto; }
+    .panel__product button:hover { background: rgba(255,255,255,0.16); }
     #unsaved { color: #f0b429; font-size: 0.85rem; font-weight: 600; flex: 0 0 auto; }
-    .status { flex: 1 1 auto; min-width: 0; margin: 0; font-size: 0.83rem; color: #f3e2c7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: right; }
-    /* The token popover is anchored to its toggle button, not to the
-       strip: the wrapper is the positioned ancestor, so the popover
-       opens directly under the button, aligned to its right edge. */
+    .status { flex: 0 1 16rem; min-width: 5rem; margin: 0 0 0 auto; font-size: 0.83rem; color: #f3e2c7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: right; }
+    /* The token popover is anchored to its toggle button: the wrapper
+       is the positioned ancestor, so the popover opens directly under
+       the button, aligned to its right edge. */
     .token-anchor { position: relative; flex: 0 0 auto; display: flex; }
     .token-popover { position: absolute; top: calc(100% + 6px); right: 0; width: min(30rem, 94vw); background: #2b2b2b; border: 1px solid #555; border-radius: 6px; padding: 0.75rem 0.85rem; z-index: 60; box-shadow: 0 10px 30px rgba(0,0,0,0.45); white-space: normal; display: flex; flex-direction: column; gap: 0.45rem; }
     .token-popover[hidden] { display: none; }
@@ -47,26 +54,38 @@ const builderConfig = {
     #api-target { font-size: 0.83rem; color: #bbb; }
     .token-note { font-size: 0.78rem; color: #999; }
     .editor-area { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+    @media (max-width: 1100px) {
+      .panel__top { flex-wrap: wrap; }
+      .panel__product { flex-wrap: wrap; row-gap: 0.3rem; }
+    }
     /* The top panel bar layout rules live in the is:global block below,
        NOT here: GrapesJS's own stylesheet positions every panel
        absolutely, and the fix has to win over that rule for the
        JS-classed mount points (see the global block for the full
        diagnosis). */
     .editor-main { display: flex; flex: 1; min-height: 0; }
-    /* Left column: the Blocks region gets its OWN scroll area (flex 1)
-       so it always starts at its true top; the extra sections below are
-       fixed siblings and can no longer push or offset the blocks list
-       inside one shared scrolled container. */
-    .panel__left { width: 252px; flex: 0 0 252px; display: flex; flex-direction: column; overflow: hidden; background: var(--gjs-main-color, #444); color: var(--gjs-font-color, #ddd); border-right: 1px solid rgba(0,0,0,0.35); }
-    #blocks { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; padding-top: 0.45rem; }
-    .panel__right { width: 312px; flex: 0 0 312px; overflow-y: auto; overflow-x: hidden; background: var(--gjs-main-color, #444); color: var(--gjs-font-color, #ddd); border-left: 1px solid rgba(0,0,0,0.35); }
+    /* Left column (Layers): the layer tree gets its OWN scroll area
+       (flex 1) so it always starts at its true top; the extra sections
+       below are fixed siblings and can no longer push or offset the
+       list inside one shared scrolled container. Right column (Blocks
+       by default, Styles/Traits switchable): the column itself scrolls,
+       like the demo's right panel. */
+    .panel__left { width: 230px; flex: 0 0 230px; display: flex; flex-direction: column; overflow: hidden; background: var(--gjs-main-color, #444); color: var(--gjs-font-color, #ddd); border-right: 1px solid rgba(0,0,0,0.35); }
+    #layers { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; padding-top: 0.45rem; }
+    .panel__right { width: 260px; flex: 0 0 260px; overflow-y: auto; overflow-x: hidden; background: var(--gjs-main-color, #444); color: var(--gjs-font-color, #ddd); border-left: 1px solid rgba(0,0,0,0.35); }
+    #blocks { padding-top: 0.45rem; }
     .editor-view[hidden] { display: none; }
-    #gjs { flex: 1; min-width: 0; }
+    /* Canvas surround: the demo shows the white page centred on a
+       light grey surround. The canvas frame itself is GrapesJS chrome
+       (its background is a dark translucent layer); the shell behind
+       it is light grey so the page reads as a page on a desk. */
+    #gjs { flex: 1; min-width: 0; background: #e6e6e6; }
     .selected-info { font-size: 0.8rem; background: rgba(0,0,0,0.22); border-bottom: 1px solid rgba(255,255,255,0.12); padding: 0.55rem 0.65rem; white-space: pre-wrap; }
     .view-note { font-size: 0.78rem; color: #aaa; padding: 0.5rem 0.65rem; margin: 0; }
-    /* Extra tools (new element type form, AI panel) live below the blocks
-       in the left column as collapsible sections, so the Blocks view keeps
-       the official icon tile look and the extras stay one click away. */
+    /* Extra tools (new element type form, AI panel) live below Layers
+       in the left column as collapsible sections, so the Blocks view
+       keeps the official icon tile look and the extras stay one click
+       away. */
     .builder-extra { flex: 0 0 auto; border-top: 1px solid rgba(255,255,255,0.14); padding: 0 0.7rem 0.8rem; }
     .builder-extra summary { cursor: pointer; font-weight: 700; font-size: 0.92rem; padding: 0.65rem 0 0.2rem; }
     .builder-extra p { font-size: 0.83rem; color: #bbb; }
@@ -102,14 +121,19 @@ const builderConfig = {
        at the true top of the blocks scroll region. */
     .gjs-block-categories { margin-top: 0; padding-top: 0; }
     .gjs-block-category:first-child .gjs-title { margin-top: 0; }
-    /* Dark scrollbar for the blocks scroll region. Outside
+    /* Dark scrollbar for the scroll regions. Outside
        .gjs-editor-cont the browser default (light) scrollbar track
        shows as a pale sliver against the dark panel, most visible at
        the top of the column where the track starts. */
-    #blocks { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.28) rgba(0,0,0,0.3); }
-    #blocks::-webkit-scrollbar { width: 8px; }
-    #blocks::-webkit-scrollbar-track { background: rgba(0,0,0,0.3); }
-    #blocks::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.28); border-radius: 4px; }
+    #layers, .panel__right { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.28) rgba(0,0,0,0.3); }
+    #layers::-webkit-scrollbar, .panel__right::-webkit-scrollbar { width: 8px; }
+    #layers::-webkit-scrollbar-track, .panel__right::-webkit-scrollbar-track { background: rgba(0,0,0,0.3); }
+    #layers::-webkit-scrollbar-thumb, .panel__right::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.28); border-radius: 4px; }
+    /* Block tiles: the demo's tiles are dark boxes with a faint light
+       border and a white icon above the label (core tiles are 45%
+       wide, 90px min height, 3px radius, 2 per row). Give them a faint
+       fill so they read as tiles against the #444 panel. */
+    .panel__right .gjs-block { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.10); }
     /* TOP PANEL BAR: the actual ordering mechanism, diagnosed in round
        3 against the installed grapesjs 0.23.8 stylesheet and measured
        in jsdom with the real CSS. GrapesJS ships
@@ -128,51 +152,50 @@ const builderConfig = {
        bar while its tiles showed below the bar's edge.
        Fix: force the mounts back into normal flow with position
        static (specificity 0-2-0/0-3-0 beats the theme's 0-1-0
-       .gjs-pn-panel), then the flex row works as intended: devices
-       left (order 1), basic actions next (order 2), switcher at the
-       right end (order 3 + margin-left auto). The bar keeps its real
-       height in flow, so nothing below it is overlaid any more. */
-    .builder-shell .panel__top { position: static; display: flex; align-items: stretch; background: var(--gjs-main-color, #444); min-height: 41px; }
+       .gjs-pn-panel), then the flex row works as intended. Demo
+       arrangement: devices left (order 1), product controls next
+       (order 2, plain HTML slot, not a panel), basic actions next
+       (order 3), switcher at the right end (order 4 + margin-left
+       auto). The bar keeps its real height in flow, so nothing below
+       it is overlaid any more. */
+    .builder-shell .panel__top { position: static; display: flex; align-items: center; background: var(--gjs-main-color, #444); min-height: 41px; }
     .builder-shell .panel__top > .panel__devices { position: static; order: 1; display: flex; align-items: center; }
-    .builder-shell .panel__top > .panel__basic-actions { position: static; order: 2; display: flex; align-items: center; }
-    .builder-shell .panel__top > .panel__switcher { position: static; order: 3; display: flex; align-items: center; margin-left: auto; }
+    .builder-shell .panel__top > .panel__product { order: 2; display: flex; align-items: center; min-width: 0; }
+    .builder-shell .panel__top > .panel__basic-actions { position: static; order: 3; display: flex; align-items: center; }
+    .builder-shell .panel__top > .panel__switcher { position: static; order: 4; display: flex; align-items: center; margin-left: auto; }
   </style>
 
   <div class="builder-shell">
-    <header class="app-strip">
-      <span class="app-brand">AstroTYPO3 <span>Builder</span></span>
-      <nav aria-label="Builder">
-        <a href="/">Home</a><a href="/templates">Templates</a><a href="/audit">Audit</a><a href="/preview/home?token=demo">Draft preview</a>
-      </nav>
-      <label for="page-title">Title</label>
-      <input id="page-title" type="text" />
-      <label for="page-slug">Slug</label>
-      <input id="page-slug" type="text" />
-      <button id="btn-load" type="button">Load page</button>
-      <button id="btn-local-draft" type="button">Load local draft</button>
-      <button id="btn-reset" type="button" title="Reset to fixture home">Reset</button>
-      <span class="token-anchor">
-        <button id="btn-token" type="button" aria-haspopup="true" aria-expanded="false">TYPO3 token</button>
-        <div id="token-popover" class="token-popover" hidden>
-          <label for="typo3-token">TYPO3 token</label>
-          <input id="typo3-token" type="password" autocomplete="off" placeholder="Preview token (only needed to save to TYPO3)" />
-          <span id="api-target"></span>
-          <span class="token-note">Tokens are minted from the TYPO3 preview secret (ASTRO_BUILDER_PREVIEW_SECRET) and are scoped: a token minted for a page slug authorizes saving that page, a token minted for the element-types scope authorizes creating element types. The token is kept in page memory only, never stored. Builder UI: GrapesJS (BSD-3-Clause). TYPO3 is the backend through the API only, there is no builder interface inside TYPO3 BE. Each block is a TYPO3 core content element type (CType) and each trait is a tt_content field.</span>
-        </div>
-      </span>
-      <p id="status" class="status" aria-live="polite" title="">Builder starting.</p>
-      <span id="unsaved" aria-live="polite"></span>
-    </header>
-
     <div class="editor-area">
       <div class="panel__top">
         <div class="panel__devices"></div>
+        <div class="panel__product">
+          <span class="app-brand">AstroTYPO3 <span>Builder</span></span>
+          <label for="page-title">Title</label>
+          <input id="page-title" type="text" />
+          <label for="page-slug">Slug</label>
+          <input id="page-slug" type="text" />
+          <button id="btn-load" type="button">Load page</button>
+          <button id="btn-local-draft" type="button">Load local draft</button>
+          <button id="btn-reset" type="button" title="Reset to fixture home">Reset</button>
+          <span class="token-anchor">
+            <button id="btn-token" type="button" aria-haspopup="true" aria-expanded="false">TYPO3 token</button>
+            <div id="token-popover" class="token-popover" hidden>
+              <label for="typo3-token">TYPO3 token</label>
+              <input id="typo3-token" type="password" autocomplete="off" placeholder="Preview token (only needed to save to TYPO3)" />
+              <span id="api-target"></span>
+              <span class="token-note">Tokens are minted from the TYPO3 preview secret (ASTRO_BUILDER_PREVIEW_SECRET) and are scoped: a token minted for a page slug authorizes saving that page, a token minted for the element-types scope authorizes creating element types. The token is kept in page memory only, never stored. Builder UI: GrapesJS (BSD-3-Clause). TYPO3 is the backend through the API only, there is no builder interface inside TYPO3 BE. Each block is a TYPO3 core content element type (CType) and each trait is a tt_content field.</span>
+            </div>
+          </span>
+          <p id="status" class="status" aria-live="polite" title="">Builder starting.</p>
+          <span id="unsaved" aria-live="polite"></span>
+        </div>
         <div class="panel__basic-actions"></div>
         <div class="panel__switcher"></div>
       </div>
       <div class="editor-main">
-        <aside id="panel-left" class="panel__left" aria-label="Blocks and tools">
-          <div id="blocks"></div>
+        <aside id="panel-left" class="panel__left" aria-label="Layers and tools">
+          <div id="layers"></div>
 
           <details class="builder-extra" id="extra-net">
             <summary>New element type</summary>
@@ -201,14 +224,14 @@ const builderConfig = {
         <main id="gjs" aria-label="Canvas"></main>
 
         <aside class="panel__right" aria-label="Editor views">
-          <div id="view-layers" class="editor-view" hidden>
-            <div id="layers"></div>
+          <div id="view-blocks" class="editor-view">
+            <div id="blocks"></div>
           </div>
           <div id="view-styles" class="editor-view" hidden>
             <div id="styles-box"></div>
             <p class="view-note">Style manager edits canvas presentation only in this demo. It is not part of the TYPO3 content contract; published styling comes from the design tokens and the Astro renderers.</p>
           </div>
-          <div id="view-traits" class="editor-view">
+          <div id="view-traits" class="editor-view" hidden>
             <div id="selected-info" class="selected-info">No element selected. Select a block on the canvas to edit its traits (tt_content fields).</div>
             <div id="traits-box"></div>
           </div>
@@ -269,7 +292,7 @@ const builderConfig = {
     let editor = null;
     let uid = 1000;
     // Status line: the visible text stays short enough to read in the
-    // slim bar (the bar ellipsises overflow, which cut the old ready
+    // top bar (the bar ellipsises overflow, which cut the old ready
     // text mid-URL); the full detail goes to the title attribute.
     const setStatus = (msg, detail) => { const el = document.getElementById('status'); el.textContent = msg; el.title = detail || msg; };
     const clone = (x) => JSON.parse(JSON.stringify(x));
@@ -521,7 +544,7 @@ const builderConfig = {
     function wireToolbar() {
       // TYPO3 token popover: the token input stays in the DOM (the API
       // client reads it fresh on every write) but is only visible when
-      // toggled open from the slim bar.
+      // toggled open from the top bar.
       const tokenBtn = document.getElementById('btn-token');
       const tokenPop = document.getElementById('token-popover');
       if (tokenBtn && tokenPop) {
@@ -669,7 +692,9 @@ const builderConfig = {
           }
         } catch { /* demo fallback: bundled registry only */ }
         initEditor();
-        // The blocks scroll region starts at its true top.
+        // The layers scroll region starts at its true top.
+        const layersRegion = document.getElementById('layers');
+        if (layersRegion) layersRegion.scrollTop = 0;
         const blocksRegion = document.getElementById('blocks');
         if (blocksRegion) blocksRegion.scrollTop = 0;
         wireToolbar();
