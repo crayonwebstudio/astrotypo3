@@ -54,16 +54,17 @@ function installDom() {
     <div class="editor-area">
       <div class="panel__top">
         <div class="panel__devices"></div>
+        <div class="panel__product"></div>
         <div class="panel__basic-actions"></div>
         <div class="panel__switcher"></div>
       </div>
       <div class="editor-main">
-        <aside id="panel-left" class="panel__left"><div id="blocks"></div></aside>
+        <aside id="panel-left" class="panel__left"><div id="layers"></div></aside>
         <main id="gjs"></main>
         <aside class="panel__right">
-          <div id="view-layers" class="editor-view" hidden><div id="layers"></div></div>
+          <div id="view-blocks" class="editor-view"><div id="blocks"></div></div>
           <div id="view-styles" class="editor-view" hidden><div id="styles-box"></div></div>
-          <div id="view-traits" class="editor-view"><div id="selected-info"></div><div id="traits-box"></div></div>
+          <div id="view-traits" class="editor-view" hidden><div id="selected-info"></div><div id="traits-box"></div></div>
         </aside>
       </div>
     </div>
@@ -135,11 +136,11 @@ after(() => {
 
 const cs = (el) => dom.window.getComputedStyle(el);
 
-test('panel mounts render in DOM order devices, basic actions, switcher', () => {
+test('panel mounts render in DOM order devices, product, basic actions, switcher', () => {
   const top = dom.window.document.querySelector('.panel__top');
   assert.deepEqual(
     [...top.children].map((c) => [...c.classList].find((cl) => cl.startsWith('panel__'))),
-    ['panel__devices', 'panel__basic-actions', 'panel__switcher'],
+    ['panel__devices', 'panel__product', 'panel__basic-actions', 'panel__switcher'],
   );
   const titles = [...top.querySelectorAll('.gjs-pn-btn')].map((b) => b.getAttribute('title'));
   assert.deepEqual(titles.slice(0, 3), ['Desktop', 'Tablet', 'Mobile'], 'device group at the extreme left');
@@ -156,8 +157,9 @@ test('panel mounts compute to position static inside a flex bar (the round 3 fix
   assert.equal(cs(top).position, 'static', '.panel__top itself is a gjs-pn-panel and must not float');
   const expected = [
     ['.panel__devices', '1', false],
-    ['.panel__basic-actions', '2', false],
-    ['.panel__switcher', '3', true],
+    ['.panel__product', '2', false],
+    ['.panel__basic-actions', '3', false],
+    ['.panel__switcher', '4', true],
   ];
   for (const [sel, order, autoLeft] of expected) {
     const el = doc.querySelector(sel);
