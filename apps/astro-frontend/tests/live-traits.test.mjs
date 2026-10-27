@@ -207,6 +207,78 @@ test('trait edit session collapses to one undo entry: one Undo click reverts the
   assert.equal(comp.getAttributes()['data-prop-heading'], 'Original TEST', 'one Redo click restores the whole session');
 });
 
+test('redo survives repeated use: collapsed entry is its own undo group, undo never removes the component', () => {
+  const heroDef = registry.components.find((c) => c.id === 'section.hero');
+  const comp = selectFirstOfType('section.hero', registryLib.propsToAttributes(heroDef, { heading: 'Original' }));
+  // Show the Traits view first, exactly as the page does before
+  // focusing: a hidden input cannot take focus, in jsdom or in a
+  // browser, so focus/blur sequencing below would be fiction without
+  // this step (the earlier tests never focused the input at all).
+  editor.Panels.getButton('panel-switcher', 'show-traits').set('active', true);
+  const input = traitInputFor('data-prop-heading');
+  assert.ok(input, 'heading trait input exists');
+  const um = editor.UndoManager;
+  const stack = um.getStack();
+  const beforeLength = stack.length;
+  input.focus();
+  assert.equal(document.activeElement, input, 'trait input takes focus once its view is shown');
+  let cur = input.value;
+  for (const ch of ' TEST') {
+    cur += ch;
+    input.value = cur;
+    input.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  }
+  assert.equal(comp.getAttributes()['data-prop-heading'], 'Original TEST');
+  // Browser mousedown on the Undo button: the focused input blurs
+  // (a real browser fires change on blur after a value change; jsdom
+  // does not, so the change is dispatched explicitly, as the browser
+  // would fire it), committing and collapsing the session, then the
+  // button takes focus and the click runs.
+  input.blur();
+  input.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+  assert.equal(stack.length, beforeLength + 1, 'session collapsed to one undo entry');
+  const collapsed = stack.at(beforeLength);
+  assert.equal(collapsed.get('type'), 'change', 'collapsed entry is the session change');
+  assert.equal(collapsed.get('object'), comp, 'collapsed entry belongs to the edited component');
+  const otherIndices = new Set();
+  stack.forEach((entry, i) => { if (i !== beforeLength) otherIndices.add(entry.get('magicFusionIndex')); });
+  assert.ok(!otherIndices.has(collapsed.get('magicFusionIndex')), 'collapsed entry has a group index no other entry shares');
+  const basicActions = document.querySelector('.panel__basic-actions');
+  const buttons = [...basicActions.querySelectorAll('.gjs-pn-btn')];
+  const undoEl = buttons.find((b) => b.getAttribute('title') === 'Undo');
+  const redoEl = buttons.find((b) => b.getAttribute('title') === 'Redo');
+  assert.ok(undoEl && redoEl, 'undo and redo buttons found by title, not by position');
+  const wrapperContains = () => {
+    let found = false;
+    editor.getWrapper().components().forEach((c) => { if (c === comp) found = true; });
+    return found;
+  };
+  // First Undo: whole session reverts, the component stays in the
+  // canvas (a shared group index previously let magic Undo drag in
+  // the older component-add entry, removing the component and
+  // moving the pointer to -1), and redo stays available.
+  undoEl.focus();
+  undoEl.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+  assert.equal(comp.getAttributes()['data-prop-heading'], 'Original', 'one Undo click reverts the whole session');
+  assert.ok(wrapperContains(), 'undo leaves the component in the canvas');
+  assert.equal(stack.pointer, beforeLength - 1, 'pointer sits on the entry before the collapsed entry, not -1');
+  assert.ok(um.hasRedo(), 'redo available after undo');
+  // First Redo: whole session restores, including the trait input.
+  redoEl.focus();
+  redoEl.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+  assert.equal(comp.getAttributes()['data-prop-heading'], 'Original TEST', 'one Redo click restores the whole session');
+  assert.equal(input.value, 'Original TEST', 'trait input resyncs on redo');
+  assert.equal(stack.pointer, beforeLength, 'pointer back on the collapsed entry after redo');
+  // Second cycle: the redo stack survives repeated use.
+  undoEl.focus();
+  undoEl.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+  assert.equal(comp.getAttributes()['data-prop-heading'], 'Original', 'second Undo reverts again');
+  assert.ok(wrapperContains(), 'second undo still leaves the component in the canvas');
+  redoEl.focus();
+  redoEl.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+  assert.equal(comp.getAttributes()['data-prop-heading'], 'Original TEST', 'second Redo restores again');
+});
+
 test('invalid JSON typed live never applies: items stay, error reported, valid JSON applies and clears', () => {
   const gridDef = registry.components.find((c) => c.id === 'section.feature-grid');
   const twoItems = [{ title: 'One', text: 'First' }, { title: 'Two', text: 'Second' }];
