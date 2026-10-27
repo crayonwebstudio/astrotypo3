@@ -3,62 +3,89 @@
 // Why this module exists: GrapesJS 0.23.8 TraitView only commits on the
 // DOM 'change' event (TraitView.prototype.eventCapture = ['change'] in
 // node_modules/grapesjs/dist/grapes.mjs), so typing in a trait field
-// changed nothing on the canvas and nothing in the dirty indicator
-// until the field lost focus or Enter was pressed. A user typing
-// without pressing Enter reasonably concluded editing did not work.
-// This module applies trait input live, on the 'input' event, through
-// the exact same code path as the blur/Enter commit
+// changed nothing on the canvas until the field lost focus or Enter
+// was pressed. A user typing without pressing Enter reasonably
+// concluded editing did not work. This module applies trait input
+// live, on the 'input' event, through the trait model path
 // (Trait.setValue -> setTargetValue -> component.addAttributes), so
-// the canvas re-renders and the dirty counter moves while typing, and
-// the later blur/change commit is a no-op (same value, Backbone set
-// skips unchanged attributes), never a double apply.
+// the canvas re-renders while typing.
 //
-// Undo granularity, stated plainly: live applies are full
-// (non-partial) applies, because GrapesJS skips both the dirty counter
-// and the undo stack for partial/avoidStore applies
-// (EditorModel.handleUpdates returns early on opt.partial, and the
-// UndoManager change handler skips on opts.partial). Per keystroke,
-// that would make each keystroke its own undo step, which is why a
-// browser user typing " TEST" and clicking Undo three times saw the
-// edit still standing: in a real browser each keystroke lands in its
-// own task, so Backbone.Undo's magic grouping (same callstack) does
-// not group them, and one Undo click reverts one keystroke. So a
-// trait edit session (first input until commit on change/blur or
-// deselect) is collapsed into exactly one undo entry on commit: the
-// per-keystroke entries are removed from the stack tail and one
-// entry is added by silently restoring the pre-edit value and then
-// applying the final value as a full apply (Backbone sets
-// _previousAttributes at the start of every top-level set, silent or
-// not, so the full apply's undo entry records the pre-edit state).
-// One toolbar Undo click therefore reverts the whole field edit, and
-// one Redo restores it, matching the old blur-commit behaviour while
-// keeping live canvas feedback. Collapse only happens when the
-// session's entries are a clean tail of the stack (pointer at the
-// end, every entry a change on this component); otherwise the entries
-// are left exactly as GrapesJS recorded them.
+// Undo mechanism, and why the previous design was replaced
+// (27 Oct 2026): live applies used to be FULL applies, one undo entry
+// per keystroke, and a commit step collapsed the session's entries by
+// slicing the stack tail (entries since session start) and replacing
+// them with one entry built by silent restore plus full apply. That
+// collapse is unsound whenever a session starts while the undo
+// pointer sits mid-stack (after undos): Backbone.Undo's addToStack
+// pops the redo tail when the session's first keystroke lands, so
+// the session's entries do NOT start at the recorded stack length.
+// The tail slice then misses the first keystroke entry, leaving it
+// below the collapsed entry as a leftover whose undo is invisible
+// (its before value already equals the current value), and further
+// undos walk into older entries, eventually undoing the
+// component-add entry, which removes the component from the canvas
+// AND unregisters it from the UndoManager, after which every later
+// edit to it records no undo entry at all. Both failure modes were
+// reproduced in a jsdom harness against the real editor (see the
+// tests): a mid-stack session leaves a leftover entry, and once the
+// pointer reaches -1, typing records zero entries while the value
+// still changes. The browser matrix (a no-op Undo after Redo, then a
+// second edit session that could not be undone at all) is exactly
+// what this mechanism produces.
 //
-// Grouping guard, load bearing for Redo (27 Oct 2026): GrapesJS's
-// module undo/redo default to magic grouping (UndoManagerModule
-// undo/redo pass all=true), so one Undo/Redo applies to EVERY stack
-// entry sharing the acted entry's magicFusionIndex, and moves the
-// pointer by the group size, not by one. Backbone.Undo assigns that
-// index per callstack (reset by a deferred timer), so entries that
-// happen to share a callstack share an index. A jsdom reproduction
-// proved the hazard: with all entries sharing one index (jsdom
-// timers freeze after GrapesJS init, so the deferred reset never
-// runs), one magic Undo undid BOTH the collapsed change entry AND
-// the older component-add entry, moving the pointer to -1 and
-// removing the component from its collection; the matching magic
-// Redo then re-added it and restored the value, so a test asserting
-// only the attribute passed while the stack bookkeeping was corrupt.
-// The same hazard applies in a real browser whenever the collapse's
-// callstack shares its index with another surviving entry. The
-// collapsed entry therefore gets a unique group index immediately
-// after creation (a string no numeric callstack index can equal),
-// so magic Undo/Redo of a collapsed session touch exactly that one
-// entry and move the pointer by exactly one, whatever else shares a
-// callstack. Other entries keep their natural indices and normal
-// magic behaviour is unchanged for them.
+// The replacement makes one undo entry per session BY CONSTRUCTION,
+// with no tail slicing and no pointer arithmetic:
+//   * Typing applies with { partial: true } (avoidStore). GrapesJS
+//     skips the undo stack for partial applies (UndoManager change
+//     handler skips on opts.partial/avoidStore) and skips the dirty
+//     counter (EditorModel.handleUpdates returns early on partial),
+//     so keystrokes record NOTHING and cannot corrupt the stack.
+//     The canvas still re-renders live, because the change event
+//     itself still fires; only the undo recording and the dirty
+//     count are skipped. One honest consequence: the dirty indicator
+//     now moves at commit, not per keystroke.
+//   * Commit (change event, or deselect backstop) does silent restore
+//     to the pre-session value plus one full apply of the final
+//     value, exactly as the old collapse did for its replacement
+//     entry, but with no entries to remove: Backbone sets
+//     _previousAttributes at the start of every top-level set,
+//     silent or not, so the full apply's undo entry records the
+//     pre-edit state. The session needs only { comp, attrName,
+//     preValue }; it never reads the stack, so mid-stack pointers,
+//     redo tails, and leftover entries cannot occur. A new edit
+//     after undos pops the redo tail through Backbone.Undo's own
+//     addToStack, which is the standard, correct behaviour.
+//   * Commit runs on the change event's CAPTURE phase (a capture
+//     listener on the traits panel), before GrapesJS's own
+//     TraitView change handler (a bubble listener on the trait row).
+//     Ordering matters because partial applies leave the component
+//     attribute __p at null (setTargetValue sets __p null for
+//     avoidStore applies, undefined otherwise), and TraitView's
+//     commit path would flip __p back to undefined, recording an
+//     invisible __p-only undo entry above the session entry.
+//     Capturing first means the commit's full apply (direct
+//     addAttributes, bypassing setTargetValue, so __p is untouched)
+//     lands before TraitView's handler runs, and that handler then
+//     finds the trait value already equal to the input and becomes
+//     a no-op. No phantom entry.
+//   * The commit entry gets a unique group index (a string no
+//     numeric callstack index can equal), so GrapesJS's default
+//     magic grouping (UndoManagerModule undo/redo pass all=true)
+//     touches exactly that one entry even if another session
+//     committed in the same callstack (deselect backstop). Magic
+//     grouping stays ON for everything else, so drag-add and other
+//     multi-entry operations still undo sensibly in one click.
+//   * Toolbar Undo still blurs first (builder-undo) so a focused
+//     field commits through the capture handler before the undo
+//     runs; toolbar Redo still does not blur, so a focused field
+//     cannot discard the redo tail before Redo runs. Keyboard
+//     Ctrl+Z / Ctrl+Shift+Z go through the same core:undo/core:redo
+//     commands as before (GrapesJS binds redo to Ctrl+Shift+Z only;
+//     there is no Ctrl+Y binding).
+//   * Enter in a single-line text trait input (INPUT, never
+//     TEXTAREA or SELECT) blurs the field, which fires change in a
+//     browser and therefore commits, matching the commit-on-Enter
+//     users expect.
 //
 // Canvas text is NOT directly editable in this slice, by design:
 // leaf component views render static innerHTML from props, so there
@@ -138,15 +165,20 @@ export function findTraitForInput(editor, inputEl) {
  * Apply one trait input's current value to the selected component,
  * live. Returns true when a trait was found and applied. Uses the
  * trait model path (setValue), so the trait model resyncs from the
- * component change (targetUpdated) and the later blur/change commit
- * of the same value is a Backbone no-op.
+ * component change (targetUpdated). With options.partial, the apply
+ * goes through as a partial (avoidStore) apply: GrapesJS records no
+ * undo entry for it and does not move the dirty counter, while the
+ * canvas still re-renders live. That is the live-typing path; the
+ * commit step later records exactly one full entry for the session.
+ * Without partial, the apply is a full apply and records normally
+ * (kept for callers that need a recorded apply).
  */
-export function applyTraitInput(editor, inputEl) {
+export function applyTraitInput(editor, inputEl, options = {}) {
   const trait = findTraitForInput(editor, inputEl);
   if (!trait) return false;
   const value = traitInputValue(trait, inputEl);
   if (value === undefined) return false;
-  try { trait.setValue(value); } catch { return false; }
+  try { trait.setValue(value, options.partial ? { partial: true } : {}); } catch { return false; }
   return true;
 }
 
@@ -190,9 +222,11 @@ export function registerTextareaTraitType(editor) {
  * could run). An invalid value reports through onJsonError at once
  * and marks the input (aria-invalid, red border, message as title);
  * a valid value applies and clears the mark through onJsonClear.
- * Second, edit sessions collapse to one undo entry on commit (see
- * the module header). 'change' commits the session for that input
- * and re-validates JSON props; deselect commits any open sessions.
+ * Second, edit sessions record exactly one undo entry on commit
+ * (see the module header): 'input' applies are partial and record
+ * nothing, and 'change' (capture phase) commits the session for
+ * that input and re-validates JSON props; deselect commits any
+ * open sessions.
  */
 // Monotonic counter for collapsed-entry group indices. A string
 // prefix guarantees no collision with Backbone.Undo's numeric
@@ -203,8 +237,10 @@ export function wireLiveTraits(editor, traitsBox, options = {}) {
   if (!editor || !traitsBox) return () => {};
   const { getDef, onJsonError, onJsonClear } = options;
   // Open edit sessions, keyed by input element: { comp, attrName,
-  // preValue, startLength }. preValue is the attribute value before
-  // the session's first live apply.
+  // preValue }. preValue is the attribute value before the session's
+  // first live apply. Deliberately NO stack bookkeeping: live applies
+  // are partial and record nothing, so there is no tail to slice and
+  // no pointer to track (see the module header).
   const sessions = new Map();
 
   function undoStack() {
@@ -256,63 +292,55 @@ export function wireLiveTraits(editor, traitsBox, options = {}) {
     if (!comp) return null;
     const attrName = trait.getName ? trait.getName() : '';
     if (!attrName) return null;
-    const stack = undoStack();
     const session = {
       comp,
       attrName,
       preValue: ((comp.getAttributes && comp.getAttributes()) || {})[attrName],
-      startLength: stack ? stack.length : 0,
     };
     sessions.set(inputEl, session);
     return session;
   }
 
-  // Collapse one session to a single undo entry. No-op unless the
-  // session's entries are a clean tail of the stack (pointer at the
-  // end, every entry since session start a change on this
-  // component). A round trip (final value equals pre-edit value)
-  // removes the entries and adds nothing.
+  // Commit one session to exactly one undo entry. Live applies were
+  // partial and recorded nothing, so there is no tail to clean up:
+  // silent restore to the pre-session value, then one full apply of
+  // the final value. Backbone records the restored state as
+  // _previousAttributes at the start of every top-level set, silent
+  // or not, so the full apply's undo entry records the pre-edit
+  // state as its before. A round trip (final value equals pre-edit
+  // value) touches nothing and adds no entry. This never reads the
+  // stack position, so it is correct whatever the pointer state is
+  // (mid-stack after undos, redo tail present, or otherwise); a
+  // mid-stack full apply pops the redo tail through Backbone.Undo's
+  // own addToStack, which is the standard behaviour for any new
+  // edit. The apply bypasses the trait model path on purpose
+  // (direct addAttributes, not setTargetValue), so the __p marker
+  // partial applies left behind is untouched and no second entry
+  // can appear (see the module header).
   function commitSession(inputEl) {
     const session = sessions.get(inputEl);
     if (!session) return;
     sessions.delete(inputEl);
-    const stack = undoStack();
-    if (!stack || !Array.isArray(stack.models)) return;
-    const tail = stack.models.slice(session.startLength);
-    const pointerAtEnd = typeof stack.pointer !== 'number' || stack.pointer === stack.length - 1;
-    let tailClean = true;
-    for (const entry of tail) {
-      try {
-        if (!(entry.get('type') === 'change' && entry.get('object') === session.comp)) { tailClean = false; break; }
-      } catch { tailClean = false; break; }
-    }
-    if (!pointerAtEnd || !tailClean) return;
-    for (let i = tail.length - 1; i >= 0; i--) {
-      try { stack.remove(tail[i]); } catch { /* keep going */ }
-    }
-    try { stack.pointer = session.startLength - 1; } catch { /* pointer stays */ }
     let finalValue;
     try { finalValue = ((session.comp.getAttributes && session.comp.getAttributes()) || {})[session.attrName]; } catch { return; }
-    if (finalValue !== session.preValue) {
-      // Silent restore first: no change event, no undo entry, no
-      // canvas re-render, but Backbone records the restored state
-      // as _previousAttributes. The full apply that follows then
-      // records exactly one undo entry whose before is pre-edit.
-      try { session.comp.addAttributes({ [session.attrName]: session.preValue }, { silent: true }); } catch { return; }
-      try { session.comp.addAttributes({ [session.attrName]: finalValue }); } catch { /* attribute stays restored */ }
-      // Grouping guard (see the module header): the full apply's
-      // entry is the new stack tail; give it a unique group index
-      // so magic Undo/Redo touch exactly this entry and move the
-      // pointer by exactly one. Guarded to the tail entry being
-      // this session's change; if anything else is on top, leave
-      // the stack exactly as GrapesJS recorded it.
-      try {
+    if (finalValue === session.preValue) return;
+    try { session.comp.addAttributes({ [session.attrName]: session.preValue }, { silent: true }); } catch { return; }
+    try { session.comp.addAttributes({ [session.attrName]: finalValue }); } catch { /* attribute stays restored */ }
+    // Grouping guard (see the module header): the full apply's
+    // entry is the new stack tail; give it a unique group index
+    // so magic Undo/Redo touch exactly this entry and move the
+    // pointer by exactly one. Guarded to the tail entry being
+    // this session's change; if anything else is on top, leave
+    // the stack exactly as GrapesJS recorded it.
+    try {
+      const stack = undoStack();
+      if (stack && Array.isArray(stack.models)) {
         const tailEntry = stack.at(stack.length - 1);
         if (tailEntry && tailEntry.get('type') === 'change' && tailEntry.get('object') === session.comp) {
           tailEntry.set('magicFusionIndex', 'astro-collapse-' + (++collapseCounter), { silent: true });
         }
-      } catch { /* grouping guard is best effort; the entry itself stands */ }
-    }
+      }
+    } catch { /* grouping guard is best effort; the entry itself stands */ }
   }
   function commitAllSessions() {
     for (const inputEl of [...sessions.keys()]) commitSession(inputEl);
@@ -335,12 +363,38 @@ export function wireLiveTraits(editor, traitsBox, options = {}) {
       }
     }
     startSession(target);
-    applyTraitInput(editor, target);
+    // Partial apply: canvas re-renders live, no undo entry, no
+    // dirty count (see the module header). The commit step records
+    // the session as exactly one entry.
+    applyTraitInput(editor, target, { partial: true });
+  };
+  // Commit on the change event's CAPTURE phase, before GrapesJS's
+  // own TraitView change handler (a bubble listener on the trait
+  // row) runs. Capture ordering is load bearing: partial applies
+  // left __p at null, and TraitView's commit path would flip it back
+  // to undefined and record an invisible __p-only entry. Committing
+  // first makes TraitView's handler find the trait value already
+  // equal to the input, so it becomes a no-op (see module header).
+  const onChangeCommit = (event) => {
+    const target = event.target;
+    if (!target || !/^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
+    commitSession(target);
+  };
+  // Enter in a single-line text trait input commits by blurring
+  // the field; in a browser the blur fires change (value changed
+  // since focus), which runs the capture commit above. TEXTAREA
+  // traits (JSON props) keep Enter for newlines, and SELECT traits
+  // keep Enter for opening the dropdown, so neither blurs here;
+  // SELECT commits on its change event anyway.
+  const onKeydown = (event) => {
+    const target = event.target;
+    if (!target || event.key !== 'Enter') return;
+    if (target.tagName !== 'INPUT') return;
+    try { target.blur(); } catch { /* field gone */ }
   };
   const onChange = (event) => {
     const target = event.target;
     if (!target || !/^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
-    commitSession(target);
     if (!getDef) return;
     let selected = null;
     try { selected = editor.getSelected(); } catch { selected = null; }
@@ -374,10 +428,14 @@ export function wireLiveTraits(editor, traitsBox, options = {}) {
   const onDeselected = () => { commitAllSessions(); };
   try { if (editor.on) editor.on('component:deselected', onDeselected); } catch { /* no event bus */ }
   traitsBox.addEventListener('input', onInput);
+  traitsBox.addEventListener('change', onChangeCommit, true);
   traitsBox.addEventListener('change', onChange);
+  traitsBox.addEventListener('keydown', onKeydown);
   return () => {
     traitsBox.removeEventListener('input', onInput);
+    traitsBox.removeEventListener('change', onChangeCommit, true);
     traitsBox.removeEventListener('change', onChange);
+    traitsBox.removeEventListener('keydown', onKeydown);
     try { if (editor.off) editor.off('component:deselected', onDeselected); } catch { /* already gone */ }
   };
 }
