@@ -134,6 +134,12 @@ const builderConfig = {
        wide, 90px min height, 3px radius, 2 per row). Give them a faint
        fill so they read as tiles against the #444 panel. */
     .panel__right .gjs-block { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.10); }
+    /* Textarea traits (JSON props, rich text, long text) are real
+       <textarea> elements via lib/liveTraits.mjs (GrapesJS 0.23.8 has
+       no textarea trait view: the base view builds an invalid
+       <input type="textarea"> that browsers render single-line).
+       Give them a usable multi-line height. */
+    #traits-box .gjs-field-textarea textarea { min-height: 7rem; resize: vertical; }
     /* TOP PANEL BAR: the actual ordering mechanism, diagnosed in round
        3 against the installed grapesjs 0.23.8 stylesheet and measured
        in jsdom with the real CSS. GrapesJS ships
@@ -289,6 +295,7 @@ const builderConfig = {
           </div>
           <div id="view-traits" class="editor-view" hidden>
             <div id="selected-info" class="selected-info">No element selected. Select a block on the canvas to edit its traits (tt_content fields).</div>
+            <p class="view-note">Editing happens here, in traits: trait fields apply live while you type, and double-clicking a block on the canvas jumps here and focuses its main text field. Canvas text itself is not directly editable; traits are the editing surface.</p>
             <div id="traits-box"></div>
           </div>
         </aside>
@@ -306,8 +313,9 @@ const builderConfig = {
     import { buildGrapesTypes, buildGrapesBlocks, renderElementHtml, propsToAttributes, attributesToProps, defaultsForProps } from '../lib/grapesRegistry.mjs';
     import { registryToElementTypes, mergeElementTypes, elementTypeToRegistryComponent, ctypeFor, ALLOWED_FIELD_TYPES } from '../lib/elementTypes.mjs';
     import { createTypo3ApiClient, registerGrapesStorage, GRAPES_STORAGE_TYPE_ID, pageToGrapesComponents, grapesComponentsToPage, elementToComponentData, DRAFT_LOCALSTORAGE_KEY, getTypo3ApiBase } from '../lib/typo3Storage.mjs';
-    import { buildPanelsConfig, registerBuilderCommands } from '../lib/builderPanels.mjs';
+    import { buildPanelsConfig, registerBuilderCommands, COMMAND_IDS } from '../lib/builderPanels.mjs';
     import { createDirtyTracker } from '../lib/dirtyTracking.mjs';
+    import { registerTextareaTraitType, wireLiveTraits, findInvalidJsonProps, canonicalStringify, PRIMARY_TEXT_TRAIT, focusPrimaryTextTrait } from '../lib/liveTraits.mjs';
     import { expandLayers } from '../lib/layerExpand.mjs';
     import { validatePage, validateChangePlan } from '../lib/validate.mjs';
     import { auditPage } from '../lib/audit.mjs';
@@ -436,7 +444,21 @@ const builderConfig = {
     // with tests): expandLayers(editor) opens every layer that has
     // children, so Body and its children are visible immediately
     // after a page loads instead of collapsed ("Body - 8" only).
-    function applyPage(page) {
+    //
+    // Saved-state snapshot (lib/liveTraits.mjs canonicalStringify):
+    // the last loaded/saved serialization. refreshDirty() compares
+    // the current serialization against it, so retyping the original
+    // trait value clears "Unsaved changes" instead of leaving the
+    // change counter's stale positive count on screen. The snapshot
+    // is taken from serialization (never from the raw loaded page
+    // JSON), so defaults filled in by attributesToProps match on
+    // both sides, and temp element ids of newly added blocks vanish
+    // from the serialization again once the block is deleted.
+    let savedSnapshot = null;
+    function currentSnapshot() {
+      try { return canonicalStringify(serializePage()); } catch { return null; }
+    }
+    async function applyPage(page) {
       storageState.page = page;
       pageMeta.id = page.id || pageMeta.id;
       pageMeta.slug = page.slug || pageMeta.slug;
@@ -451,6 +473,13 @@ const builderConfig = {
       // again on every page load (initial, Load page, local draft,
       // Reset, template apply all flow through here).
       expandLayers(editor);
+      // New baseline: the loaded canvas is the saved state, and the
+      // load's own debounced counter increments must not leak into
+      // the indicator. Previously applyPage never cleared anything,
+      // so after Reset (and after any page load) the indicator kept
+      // the previous edit's stale "Unsaved changes".
+      savedSnapshot = currentSnapshot();
+      if (dirtyTracker) await dirtyTracker.settleAndMarkClean();
     }
 
     // Dirty tracking lives in lib/dirtyTracking.mjs. GrapesJS 0.23.8
@@ -464,8 +493,18 @@ const builderConfig = {
     function showUnsaved(count) {
       document.getElementById('unsaved').textContent = count > 0 ? 'Unsaved changes' : '';
     }
+    // Dirty display with snapshot restore: when the current canvas
+    // serializes identically to the saved snapshot (for example the
+    // user retyped the original trait value), report clean even
+    // though the change counter counted the round trip. Otherwise
+    // fall back to the counter, as before.
     function markDirty() {
-      if (dirtyTracker) dirtyTracker.refresh();
+      if (!dirtyTracker) return;
+      if (editor && savedSnapshot !== null) {
+        const cur = currentSnapshot();
+        if (cur !== null && cur === savedSnapshot) { dirtyTracker.markClean(); return; }
+      }
+      dirtyTracker.refresh();
     }
     function markClean() {
       if (dirtyTracker) dirtyTracker.markClean();
@@ -475,6 +514,15 @@ const builderConfig = {
     // Page actions, invoked from the GrapesJS top panel buttons through
     // the commands registered in lib/builderPanels.mjs.
     async function saveDraft() {
+      // Invalid JSON in an array/object trait attribute is silently
+      // converted to [] or {} by attributesToProps on serialize, so
+      // without this check a save would quietly empty the field.
+      // Surface it as a plain status error and abort instead.
+      const badJson = findInvalidJsonProps(storageState.getComponents(), registryById());
+      if (badJson.length) {
+        setStatus('Cannot save: invalid JSON in ' + badJson.map((b) => b.componentId + ' field "' + b.prop + '"').join(', ') + '. Fix the JSON and save again.');
+        return;
+      }
       const page = serializePage();
       const check = validatePage(page, registryState);
       if (!check.valid) { setStatus('Cannot save, validation failed:\n' + check.errors.join('\n')); return; }
@@ -483,8 +531,11 @@ const builderConfig = {
       try {
         const out = await editor.store();
         // A debounced increment from the last edit can still be
-        // pending at store time; settle, then reset.
+        // pending at store time; settle, then reset. The saved page
+        // becomes the new snapshot baseline (a later restore of
+        // these exact values reads clean again).
         await dirtyTracker.settleAndMarkClean();
+        savedSnapshot = currentSnapshot();
         setStatus('Saved draft through the typo3-api storage adapter. ' + ((out && out.notice) || ''));
       } catch (err) {
         setStatus('Saved to the local backup only. API save failed: ' + String(err && err.message ? err.message : err));
@@ -513,6 +564,35 @@ const builderConfig = {
       onValidate: () => validateCurrent(),
       onPublish: () => { void publishNow(); },
     };
+
+    // Canvas double-click: leaf views render static innerHTML from
+    // props, so there is no editable text node and double-clicking
+    // canvas text only selects the block. The scoped behaviour:
+    // double-clicking a text-bearing block switches the right panel
+    // to Traits and focuses that component's primary text trait
+    // (PRIMARY_TEXT_TRAIT in lib/liveTraits.mjs). Container, columns
+    // and divider have no text trait, so double-click is a plain
+    // selection for them. The listener lives on the canvas frame
+    // document (iframe events do not bubble to the parent page) and
+    // is guarded against double attachment across frame (re)loads.
+    function wireCanvasDblClick() {
+      let doc = null;
+      try { doc = editor.Canvas.getDocument(); } catch { doc = null; }
+      if (!doc || doc.__astroDblClickWired) return;
+      doc.__astroDblClickWired = true;
+      doc.addEventListener('dblclick', () => {
+        const comp = editor.getSelected();
+        if (!comp) return;
+        const attrs = (comp.getAttributes && comp.getAttributes()) || {};
+        const componentId = attrs['data-astro-component-id'] || (comp.get && comp.get('type')) || '';
+        if (!PRIMARY_TEXT_TRAIT[componentId]) return;
+        try {
+          const btn = editor.Panels.getButton('panel-switcher', 'show-traits');
+          if (btn && !btn.get('active')) btn.set('active', true);
+        } catch { /* traits view stays as-is; focus attempt below still runs */ }
+        setTimeout(() => { try { focusPrimaryTextTrait(editor, comp); } catch {} }, 0);
+      });
+    }
 
     function initEditor() {
       editor = grapesjs.init({
@@ -558,10 +638,27 @@ const builderConfig = {
 
       dirtyTracker = createDirtyTracker(editor, showUnsaved);
 
+      // Real multi-line textarea traits (lib/liveTraits.mjs): GrapesJS
+      // 0.23.8 has no textarea trait view, so without this the JSON
+      // and long-text traits render as single-line text inputs.
+      registerTextareaTraitType(editor);
+      // Live trait application: typing in a trait field applies on
+      // 'input' (canvas + dirty indicator update while typing).
+      // JSON props are validated on commit ('change'), not per
+      // keystroke, so mid-typing JSON does not flash errors.
+      wireLiveTraits(editor, document.getElementById('traits-box'), {
+        getDef: (componentId) => registryById().get(componentId),
+        onJsonError: (prop, message) => setStatus('Invalid JSON in field "' + prop + '": ' + message),
+        onJsonClear: () => { /* a later valid value leaves the status alone; save re-checks */ },
+      });
+      wireCanvasDblClick();
+
       // If the editor 'load' event fires after a page is already in
       // the canvas (LayerManager sets its root on 'load'), expand the
       // tree then too; applyPage's own call covers the normal order.
-      editor.on('load', () => expandLayers(editor));
+      // The canvas frame document is also (re)created around load, so
+      // (re)attach the double-click handler then as well.
+      editor.on('load', () => { expandLayers(editor); wireCanvasDblClick(); });
 
       for (const def of registryState.components) registerComponentType(def);
 
@@ -627,17 +724,15 @@ const builderConfig = {
         });
       }
       document.getElementById('page-title').addEventListener('change', (e) => { pageMeta.title = e.target.value; markDirty(); });
-      document.getElementById('page-slug').addEventListener('change', (e) => { pageMeta.slug = e.target.value.trim() || 'home'; });
+      document.getElementById('page-slug').addEventListener('change', (e) => { pageMeta.slug = e.target.value.trim() || 'home'; markDirty(); });
       document.getElementById('btn-load').addEventListener('click', async () => {
         const slug = document.getElementById('page-slug').value.trim() || 'home';
         try {
           const page = await client.loadPage(slug);
           if (!page) { setStatus('No published page found for slug "' + slug + '" in the content API.'); return; }
-          applyPage(page);
-          // The load's setComponents schedules debounced counter
-          // increments; settle before resetting or the label flips back
-          // to "Unsaved changes" one tick later.
-          await dirtyTracker.settleAndMarkClean();
+          // applyPage establishes the clean state itself (snapshot
+          // baseline + settled counter), so no second settle here.
+          await applyPage(page);
           setStatus('Loaded page "' + slug + '" from the content API.');
         } catch (err) { setStatus('Load failed: ' + String(err)); }
       });
