@@ -85,6 +85,8 @@ export const COMMAND_IDS = {
   save: 'builder-save-draft',
   validate: 'builder-validate',
   publish: 'builder-publish',
+  undo: 'builder-undo',
+  redo: 'builder-redo',
 };
 
 /** Panels config object for grapesjs.init ({ panels: buildPanelsConfig() }). */
@@ -105,8 +107,8 @@ export function buildPanelsConfig() {
         id: PANEL_IDS.basicActions,
         el: '.panel__basic-actions',
         buttons: [
-          { id: 'undo', label: ICONS.undo, command: 'core:undo', attributes: { title: 'Undo' } },
-          { id: 'redo', label: ICONS.redo, command: 'core:redo', attributes: { title: 'Redo' } },
+          { id: 'undo', label: ICONS.undo, command: COMMAND_IDS.undo, attributes: { title: 'Undo' } },
+          { id: 'redo', label: ICONS.redo, command: COMMAND_IDS.redo, attributes: { title: 'Redo' } },
           { id: 'visibility', label: ICONS.borders, command: 'sw-visibility', active: true, attributes: { title: 'View components (outlines)' } },
           { id: 'preview', label: ICONS.preview, command: 'preview', attributes: { title: 'Preview' } },
           { id: 'fullscreen', label: ICONS.fullscreen, command: 'fullscreen', attributes: { title: 'Fullscreen' } },
@@ -187,5 +189,27 @@ export function registerBuilderCommands(editor, handlers = {}) {
   editor.Commands.add(COMMAND_IDS.save, { run() { if (handlers.onSave) handlers.onSave(); } });
   editor.Commands.add(COMMAND_IDS.validate, { run() { if (handlers.onValidate) handlers.onValidate(); } });
   editor.Commands.add(COMMAND_IDS.publish, { run() { if (handlers.onPublish) handlers.onPublish(); } });
+
+  // Undo/Redo as momentary custom commands wrapping the core commands,
+  // instead of wiring the buttons straight to 'core:undo'/'core:redo'.
+  // The browser reproduction behind this: after a trait edit, the
+  // toolbar Undo click produced no visible change while keyboard
+  // Ctrl+Z after clicking the canvas did undo. The button path itself
+  // reproduces fine in jsdom (see tests/live-traits.test.mjs), so the
+  // browser difference is focus: a click on the toolbar first blurs a
+  // focused trait input, and a pending (pre-live-traits) edit commits
+  // on that blur in the same interaction as the undo. Blurring first
+  // makes the order explicit (commit, then undo) instead of leaving
+  // it to mousedown/click ordering, and with live traits the blur is
+  // a no-op because every keystroke is already applied. Run only, so
+  // the button stays momentary like Save/Validate/Publish.
+  const blurTraitInput = () => {
+    if (typeof document === 'undefined') return;
+    const active = document.activeElement;
+    const traitsBox = document.getElementById('traits-box');
+    if (active && traitsBox && traitsBox.contains(active)) active.blur();
+  };
+  editor.Commands.add(COMMAND_IDS.undo, { run(ed) { blurTraitInput(); ed.runCommand('core:undo'); } });
+  editor.Commands.add(COMMAND_IDS.redo, { run(ed) { blurTraitInput(); ed.runCommand('core:redo'); } });
   return editor;
 }
