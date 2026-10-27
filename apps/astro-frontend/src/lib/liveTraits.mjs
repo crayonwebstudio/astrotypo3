@@ -10,6 +10,22 @@
 // (Trait.setValue -> setTargetValue -> component.addAttributes), so
 // the canvas re-renders while typing.
 //
+// Undo mechanism, updated again (27 Oct 2026, second change the
+// same day): the session-commit entry described below used to be
+// the builder's undo, recorded on GrapesJS's stock UndoManager. That
+// stock stack is abandoned (see lib/history.mjs for the full
+// reasons: Redo not restoring, drag-add not undoing, one Undo
+// wiping the canvas through a load group). The commit below still
+// does the silent restore plus one full apply, because that keeps
+// the __p marker handling correct, but the builder's undo entry is
+// now a snapshot pushed through the onSessionStart/onSessionCommit
+// hooks into lib/history.mjs, and the stock entry the full apply
+// records is inert (no button, keymap, or command path reaches
+// core:undo/core:redo any more). Everything else in this header
+// about partial live applies, capture-phase commit ordering, and
+// the grouping guard still describes the live-typing path
+// accurately; the grouping guard now guards only an inert entry.
+//
 // Undo mechanism, and why the previous design was replaced
 // (27 Oct 2026): live applies used to be FULL applies, one undo entry
 // per keystroke, and a commit step collapsed the session's entries by
@@ -77,11 +93,12 @@
 //     multi-entry operations still undo sensibly in one click.
 //   * Toolbar Undo still blurs first (builder-undo) so a focused
 //     field commits through the capture handler before the undo
-//     runs; toolbar Redo still does not blur, so a focused field
-//     cannot discard the redo tail before Redo runs. Keyboard
-//     Ctrl+Z / Ctrl+Shift+Z go through the same core:undo/core:redo
-//     commands as before (GrapesJS binds redo to Ctrl+Shift+Z only;
-//     there is no Ctrl+Y binding).
+//     runs; toolbar Redo still does not blur. Keyboard Ctrl+Z /
+//     Ctrl+Shift+Z are rerouted by lib/history.mjs
+//     (installHistoryKeymaps removes the stock keymaps and binds
+//     the same keys to the snapshot history); GrapesJS binds redo
+//     to Ctrl+Shift+Z only, there is no Ctrl+Y binding, and none
+//     is invented.
 //   * Enter in a single-line text trait input (INPUT, never
 //     TEXTAREA or SELECT) blurs the field, which fires change in a
 //     browser and therefore commits, matching the commit-on-Enter
@@ -235,7 +252,7 @@ let collapseCounter = 0;
 
 export function wireLiveTraits(editor, traitsBox, options = {}) {
   if (!editor || !traitsBox) return () => {};
-  const { getDef, onJsonError, onJsonClear } = options;
+  const { getDef, onJsonError, onJsonClear, onSessionStart, onSessionCommit } = options;
   // Open edit sessions, keyed by input element: { comp, attrName,
   // preValue }. preValue is the attribute value before the session's
   // first live apply. Deliberately NO stack bookkeeping: live applies
@@ -298,6 +315,12 @@ export function wireLiveTraits(editor, traitsBox, options = {}) {
       preValue: ((comp.getAttributes && comp.getAttributes()) || {})[attrName],
     };
     sessions.set(inputEl, session);
+    // Snapshot history hook (lib/history.mjs): the session's
+    // pre-edit state is ensured present now; the generic push path
+    // is suppressed while the session is open, so keystrokes can
+    // never become entries. The commit hook below pushes exactly
+    // one entry for the whole session.
+    try { if (onSessionStart) onSessionStart(); } catch { /* history hook is best effort */ }
     return session;
   }
 
@@ -321,11 +344,16 @@ export function wireLiveTraits(editor, traitsBox, options = {}) {
     const session = sessions.get(inputEl);
     if (!session) return;
     sessions.delete(inputEl);
+    // The session closes on EVERY exit path, including the no-change
+    // round trip below: if the history hook were skipped there, the
+    // history would keep suppressing generic pushes forever.
+    const closeSession = () => { try { if (onSessionCommit) onSessionCommit(); } catch { /* history hook is best effort */ } };
     let finalValue;
-    try { finalValue = ((session.comp.getAttributes && session.comp.getAttributes()) || {})[session.attrName]; } catch { return; }
-    if (finalValue === session.preValue) return;
-    try { session.comp.addAttributes({ [session.attrName]: session.preValue }, { silent: true }); } catch { return; }
+    try { finalValue = ((session.comp.getAttributes && session.comp.getAttributes()) || {})[session.attrName]; } catch { closeSession(); return; }
+    if (finalValue === session.preValue) { closeSession(); return; }
+    try { session.comp.addAttributes({ [session.attrName]: session.preValue }, { silent: true }); } catch { closeSession(); return; }
     try { session.comp.addAttributes({ [session.attrName]: finalValue }); } catch { /* attribute stays restored */ }
+    closeSession();
     // Grouping guard (see the module header): the full apply's
     // entry is the new stack tail; give it a unique group index
     // so magic Undo/Redo touch exactly this entry and move the
