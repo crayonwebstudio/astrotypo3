@@ -252,7 +252,7 @@ let collapseCounter = 0;
 
 export function wireLiveTraits(editor, traitsBox, options = {}) {
   if (!editor || !traitsBox) return () => {};
-  const { getDef, onJsonError, onJsonClear, onSessionStart, onSessionCommit } = options;
+  const { getDef, onJsonError, onJsonClear, onSessionStart, onSessionCommit, onLiveInput, onUndoKey, onRedoKey } = options;
   // Open edit sessions, keyed by input element: { comp, attrName,
   // preValue }. preValue is the attribute value before the session's
   // first live apply. Deliberately NO stack bookkeeping: live applies
@@ -393,8 +393,14 @@ export function wireLiveTraits(editor, traitsBox, options = {}) {
     startSession(target);
     // Partial apply: canvas re-renders live, no undo entry, no
     // dirty count (see the module header). The commit step records
-    // the session as exactly one entry.
+    // the session as exactly one entry. The builder refreshes the
+    // dirty indicator from the snapshot compare on every input, so
+    // a canvas change that arrives through a partial apply (typing,
+    // or a native input undo) still moves the indicator; without
+    // this, partial applies would leave it stale, because they skip
+    // both the change counter and the editor 'update' event.
     applyTraitInput(editor, target, { partial: true });
+    try { if (onLiveInput) onLiveInput(); } catch { /* indicator refresh is best effort */ }
   };
   // Commit on the change event's CAPTURE phase, before GrapesJS's
   // own TraitView change handler (a bubble listener on the trait
@@ -414,9 +420,29 @@ export function wireLiveTraits(editor, traitsBox, options = {}) {
   // traits (JSON props) keep Enter for newlines, and SELECT traits
   // keep Enter for opening the dropdown, so neither blurs here;
   // SELECT commits on its change event anyway.
+  //
+  // Builder history shortcuts from inside a trait field: GrapesJS
+  // keymaps never fire here (keymaster's filter skips INPUT,
+  // TEXTAREA and SELECT targets), so without this handler the
+  // browser's native input undo/redo takes over on Ctrl/Cmd+Z:
+  // it reverts the field text and fires 'input', which live-applies
+  // to the canvas, but no history entry moves and no dirty
+  // recompute runs, leaving "Unsaved changes" on screen after the
+  // content has reverted to the saved state. Route through history
+  // instead: Undo commits any open session first (so the whole
+  // field edit is what gets undone), Redo never commits (a commit
+  // would push a new entry and truncate the redo tail), matching
+  // the toolbar buttons' blur/no-blur behaviour.
   const onKeydown = (event) => {
     const target = event.target;
-    if (!target || event.key !== 'Enter') return;
+    if (!target) return;
+    if ((event.ctrlKey || event.metaKey) && (event.key === 'z' || event.key === 'Z')) {
+      try { event.preventDefault(); } catch { /* default action already blocked */ }
+      if (event.shiftKey) { try { if (onRedoKey) onRedoKey(); } catch { /* history call is best effort */ } }
+      else { commitAllSessions(); try { if (onUndoKey) onUndoKey(); } catch { /* history call is best effort */ } }
+      return;
+    }
+    if (event.key !== 'Enter') return;
     if (target.tagName !== 'INPUT') return;
     try { target.blur(); } catch { /* field gone */ }
   };
