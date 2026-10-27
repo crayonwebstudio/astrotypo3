@@ -25,8 +25,15 @@ let registryLib;
 let panelsLib;
 let liveTraits;
 let typo3Storage;
+let historyLib;
+let history;
 let editor;
 let dom;
+// Shared command handlers, exactly as the builder page wires them:
+// the commands are registered by a plugin during grapesjs.init, so
+// the handlers object is mutated after init (closures read it at
+// click time) to attach the history instance once it exists.
+const panelHandlers = {};
 const jsonErrors = [];
 const jsonClears = [];
 
@@ -80,6 +87,7 @@ before(async () => {
   panelsLib = await import('../src/lib/builderPanels.mjs');
   liveTraits = await import('../src/lib/liveTraits.mjs');
   typo3Storage = await import('../src/lib/typo3Storage.mjs');
+  historyLib = await import('../src/lib/history.mjs');
 
   editor = grapesjs.init({
     container: '#gjs',
@@ -90,8 +98,36 @@ before(async () => {
     layerManager: { appendTo: '#layers' },
     traitManager: { appendTo: '#traits-box' },
     panels: panelsLib.buildPanelsConfig(),
-    plugins: [(ed) => { panelsLib.registerBuilderCommands(ed, {}); }],
+    plugins: [(ed) => { panelsLib.registerBuilderCommands(ed, panelHandlers); }],
   });
+  // Snapshot history, wired exactly as the builder page wires it:
+  // restore re-selects by element id (loadProjectData rebuilds the
+  // component instances, so the old selection object is gone and
+  // the trait panel must re-render for the restored component),
+  // buttons and keymaps route here, never to core:undo/core:redo.
+  history = historyLib.createHistory(editor, {
+    onRestore: (elementId) => {
+      if (!elementId) return;
+      let found = null;
+      const walk = (list) => {
+        for (const comp of list) {
+          const attrs = (comp.getAttributes && comp.getAttributes()) || {};
+          if (attrs['data-astro-element-id'] === elementId) { found = comp; return true; }
+          const kids = [];
+          try { comp.components().forEach((k) => kids.push(k)); } catch {}
+          if (kids.length && walk(kids)) return true;
+        }
+        return false;
+      };
+      const top = [];
+      editor.getWrapper().components().forEach((c) => top.push(c));
+      if (walk(top)) { try { editor.select(found); } catch {} }
+    },
+  });
+  history.attach();
+  panelHandlers.onUndo = () => history.undo();
+  panelHandlers.onRedo = () => history.redo();
+  historyLib.installHistoryKeymaps(editor, history);
   liveTraits.registerTextareaTraitType(editor);
   for (const id of ['section.hero', 'content.heading', 'section.feature-grid']) {
     registerComponentType(registry.components.find((c) => c.id === id));
@@ -100,6 +136,8 @@ before(async () => {
     getDef: (cid) => registry.components.find((c) => c.id === cid),
     onJsonError: (prop, message) => { jsonErrors.push({ prop, message }); },
     onJsonClear: (prop) => { jsonClears.push(prop); },
+    onSessionStart: () => history.beginTraitSession(),
+    onSessionCommit: () => history.commitTraitSession(),
   });
 });
 
@@ -114,7 +152,33 @@ function selectFirstOfType(type, attributes) {
   editor.setComponents([{ type, attributes: withId }]);
   const comp = editor.getWrapper().components().at(0);
   editor.select(comp);
+  // Fresh history baseline for the test, exactly as the builder
+  // page's applyPage does on every page load: the loaded canvas is
+  // entry 0, so Undo at baseline can never wipe the page.
+  history.reset();
   return comp;
+}
+
+// After a history restore, loadProjectData rebuilds the component
+// instances, so a component object captured before the restore is
+// stale: its attributes still show the pre-restore values. Tests
+// must re-query by element id after any Undo/Redo.
+function componentByElementId(elementId) {
+  let found = null;
+  const walk = (list) => {
+    for (const comp of list) {
+      const attrs = (comp.getAttributes && comp.getAttributes()) || {};
+      if (attrs['data-astro-element-id'] === elementId) { found = comp; return true; }
+      const kids = [];
+      try { comp.components().forEach((k) => kids.push(k)); } catch {}
+      if (kids.length && walk(kids)) return true;
+    }
+    return false;
+  };
+  const top = [];
+  editor.getWrapper().components().forEach((c) => top.push(c));
+  walk(top);
+  return found;
 }
 
 function traitInputFor(propAttr) {
@@ -181,17 +245,18 @@ test('toolbar Undo button reverts a trait change, Redo restores it', () => {
   const redoEl = buttons.find((b) => b.getAttribute('title') === 'Redo');
   assert.ok(undoEl && redoEl, 'undo and redo buttons rendered');
   undoEl.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
-  assert.equal(comp.getAttributes()['data-prop-heading'], 'Original');
+  // Re-query: the restore rebuilds the component instances, so the
+  // pre-restore `comp` object still shows the old values.
+  assert.equal(componentByElementId('el-test-stable-1').getAttributes()['data-prop-heading'], 'Original');
   redoEl.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
-  assert.equal(comp.getAttributes()['data-prop-heading'], 'Edited');
+  assert.equal(componentByElementId('el-test-stable-1').getAttributes()['data-prop-heading'], 'Edited');
 });
 
-test('trait edit session records exactly one undo entry: one Undo click reverts the whole typed edit', () => {
+test('trait edit session records exactly one history entry: one Undo click reverts the whole typed edit', () => {
   const heroDef = registry.components.find((c) => c.id === 'section.hero');
   const comp = selectFirstOfType('section.hero', registryLib.propsToAttributes(heroDef, { heading: 'Original' }));
   const input = traitInputFor('data-prop-heading');
-  const um = editor.UndoManager;
-  const beforeLength = um.getStack().length;
+  const beforeLength = history.length;
   let cur = input.value;
   for (const ch of ' TEST') {
     cur += ch;
@@ -200,25 +265,27 @@ test('trait edit session records exactly one undo entry: one Undo click reverts 
   }
   assert.equal(comp.getAttributes()['data-prop-heading'], 'Original TEST');
   // Live applies are partial and record nothing: typing alone must
-  // not grow the stack (this is the mechanism that replaces the old
-  // tail-slice collapse, which broke for mid-stack sessions).
-  assert.equal(um.getStack().length, beforeLength, 'partial live applies record no undo entries');
-  assert.equal(um.getStack().pointer, beforeLength - 1, 'pointer unmoved by typing');
+  // not grow the history (the session is open, so generic pushes
+  // are suppressed and only the commit pushes).
+  assert.equal(history.length, beforeLength, 'partial live applies record no history entries');
+  assert.equal(history.canRedo(), false, 'no redo tail while typing');
   // Commit (blur/Enter in a real browser): exactly one entry for
-  // the whole session, recorded by the commit's full apply.
+  // the whole session, pushed by the session commit hook.
   input.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
-  assert.equal(um.getStack().length, beforeLength + 1, 'session commits to exactly one undo entry');
+  assert.equal(history.length, beforeLength + 1, 'session commits to exactly one history entry');
   const basicActions = document.querySelector('.panel__basic-actions');
   const buttons = [...basicActions.querySelectorAll('.gjs-pn-btn')];
   const undoEl = buttons.find((b) => b.getAttribute('title') === 'Undo');
   const redoEl = buttons.find((b) => b.getAttribute('title') === 'Redo');
   undoEl.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
-  assert.equal(comp.getAttributes()['data-prop-heading'], 'Original', 'one Undo click reverts the whole session');
+  // Re-query: the restore rebuilds the component instances, so the
+  // pre-restore `comp` object still shows the old values.
+  assert.equal(componentByElementId('el-test-stable-1').getAttributes()['data-prop-heading'], 'Original', 'one Undo click reverts the whole session');
   redoEl.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
-  assert.equal(comp.getAttributes()['data-prop-heading'], 'Original TEST', 'one Redo click restores the whole session');
+  assert.equal(componentByElementId('el-test-stable-1').getAttributes()['data-prop-heading'], 'Original TEST', 'one Redo click restores the whole session');
 });
 
-test('redo survives repeated use: commit entry is its own undo group, undo never removes the component', () => {
+test('redo survives repeated use: snapshot history, undo never removes the component', () => {
   const heroDef = registry.components.find((c) => c.id === 'section.hero');
   const comp = selectFirstOfType('section.hero', registryLib.propsToAttributes(heroDef, { heading: 'Original' }));
   // Show the Traits view first, exactly as the page does before
@@ -228,9 +295,7 @@ test('redo survives repeated use: commit entry is its own undo group, undo never
   editor.Panels.getButton('panel-switcher', 'show-traits').set('active', true);
   const input = traitInputFor('data-prop-heading');
   assert.ok(input, 'heading trait input exists');
-  const um = editor.UndoManager;
-  const stack = um.getStack();
-  const beforeLength = stack.length;
+  const beforeLength = history.length;
   input.focus();
   assert.equal(document.activeElement, input, 'trait input takes focus once its view is shown');
   let cur = input.value;
@@ -243,68 +308,65 @@ test('redo survives repeated use: commit entry is its own undo group, undo never
   // Browser mousedown on the Undo button: the focused input blurs
   // (a real browser fires change on blur after a value change; jsdom
   // does not, so the change is dispatched explicitly, as the browser
-  // would fire it), committing and collapsing the session, then the
-  // button takes focus and the click runs.
+  // would fire it), committing the session, then the button takes
+  // focus and the click runs.
   input.blur();
   input.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
-  assert.equal(stack.length, beforeLength + 1, 'session commits to one undo entry');
-  const collapsed = stack.at(beforeLength);
-  assert.equal(collapsed.get('type'), 'change', 'commit entry is the session change');
-  assert.equal(collapsed.get('object'), comp, 'commit entry belongs to the edited component');
-  const otherIndices = new Set();
-  stack.forEach((entry, i) => { if (i !== beforeLength) otherIndices.add(entry.get('magicFusionIndex')); });
-  assert.ok(!otherIndices.has(collapsed.get('magicFusionIndex')), 'collapsed entry has a group index no other entry shares');
+  assert.equal(history.length, beforeLength + 1, 'session commits to one history entry');
   const basicActions = document.querySelector('.panel__basic-actions');
   const buttons = [...basicActions.querySelectorAll('.gjs-pn-btn')];
   const undoEl = buttons.find((b) => b.getAttribute('title') === 'Undo');
   const redoEl = buttons.find((b) => b.getAttribute('title') === 'Redo');
   assert.ok(undoEl && redoEl, 'undo and redo buttons found by title, not by position');
-  const wrapperContains = () => {
+  const wrapperContainsId = () => {
     let found = false;
-    editor.getWrapper().components().forEach((c) => { if (c === comp) found = true; });
+    editor.getWrapper().components().forEach((c) => {
+      if ((c.getAttributes() || {})['data-astro-element-id'] === 'el-test-stable-1') found = true;
+    });
     return found;
   };
   // First Undo: whole session reverts, the component stays in the
-  // canvas (a shared group index previously let magic Undo drag in
-  // the older component-add entry, removing the component and
-  // moving the pointer to -1), and redo stays available.
+  // canvas (the stock stack's shared group index previously let a
+  // magic Undo drag in the older component-add entry, removing the
+  // component and moving the pointer to -1; snapshots have no
+  // groups, so that failure mode cannot occur), and redo stays
+  // available.
   undoEl.focus();
   undoEl.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
-  assert.equal(comp.getAttributes()['data-prop-heading'], 'Original', 'one Undo click reverts the whole session');
-  assert.ok(wrapperContains(), 'undo leaves the component in the canvas');
-  assert.equal(stack.pointer, beforeLength - 1, 'pointer sits on the entry before the collapsed entry, not -1');
-  assert.ok(um.hasRedo(), 'redo available after undo');
-  // First Redo: whole session restores, including the trait input.
+  assert.equal(wrapperContainsId(), true, 'undo leaves the component in the canvas');
+  assert.equal(traitInputFor('data-prop-heading').value, 'Original', 'one Undo click reverts the whole session');
+  assert.ok(history.canRedo(), 'redo available after undo');
+  // First Redo: whole session restores. The restore rebuilds the
+  // component instances, so the trait input is re-queried: the old
+  // input element belongs to the discarded instance.
   redoEl.focus();
   redoEl.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
-  assert.equal(comp.getAttributes()['data-prop-heading'], 'Original TEST', 'one Redo click restores the whole session');
-  assert.equal(input.value, 'Original TEST', 'trait input resyncs on redo');
-  assert.equal(stack.pointer, beforeLength, 'pointer back on the collapsed entry after redo');
-  // Second cycle: the redo stack survives repeated use.
+  assert.ok(wrapperContainsId(), 'redo restores the component');
+  assert.equal(traitInputFor('data-prop-heading').value, 'Original TEST', 'trait input resyncs on redo');
+  assert.equal(history.canUndo(), true, 'undo available again after redo');
+  // Second cycle: the redo tail survives repeated use.
   undoEl.focus();
   undoEl.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
-  assert.equal(comp.getAttributes()['data-prop-heading'], 'Original', 'second Undo reverts again');
-  assert.ok(wrapperContains(), 'second undo still leaves the component in the canvas');
+  assert.ok(wrapperContainsId(), 'second undo still leaves the component in the canvas');
+  assert.equal(traitInputFor('data-prop-heading').value, 'Original', 'second Undo reverts again');
   redoEl.focus();
   redoEl.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
-  assert.equal(comp.getAttributes()['data-prop-heading'], 'Original TEST', 'second Redo restores again');
+  assert.ok(wrapperContainsId(), 'second redo still restores the component');
+  assert.equal(traitInputFor('data-prop-heading').value, 'Original TEST', 'second Redo restores again');
 });
 
-test('mid-stack session commits to exactly one entry with no leftover (the old collapse bug)', () => {
+test('mid-stack session commits to exactly one entry and truncates the redo tail', () => {
   // The old tail-slice collapse broke here: a session starting
   // while the pointer sat mid-stack (after an Undo) left its first
   // keystroke entry below the collapsed entry, because
   // Backbone.Undo pops the redo tail when that keystroke lands.
-  // That leftover undid invisibly and corrupted later sessions.
-  // With partial live applies there is no tail to slice, so a
-  // mid-stack session must produce exactly one entry and nothing
-  // else, whatever the pointer state is.
+  // With snapshots there is no tail to slice: a mid-stack session
+  // must produce exactly one entry, truncating the redo tail, and
+  // one Undo must revert it fully.
   const heroDef = registry.components.find((c) => c.id === 'section.hero');
-  const comp = selectFirstOfType('section.hero', registryLib.propsToAttributes(heroDef, { heading: 'Original' }));
+  selectFirstOfType('section.hero', registryLib.propsToAttributes(heroDef, { heading: 'Original' }));
   const input = traitInputFor('data-prop-heading');
-  const um = editor.UndoManager;
-  const stack = um.getStack();
-  const baseLength = stack.length;
+  const baseLength = history.length;
   const click = (title) => {
     const btn = [...document.querySelector('.panel__basic-actions').querySelectorAll('.gjs-pn-btn')]
       .find((b) => b.getAttribute('title') === title);
@@ -312,46 +374,40 @@ test('mid-stack session commits to exactly one entry with no leftover (the old c
     btn.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
   };
   const typeAndCommit = (text) => {
-    input.focus();
-    let cur = input.value;
+    const field = traitInputFor('data-prop-heading');
+    field.focus();
+    let cur = field.value;
     for (const ch of text) {
       cur += ch;
-      input.value = cur;
-      input.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+      field.value = cur;
+      field.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
     }
-    input.blur();
-    input.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+    field.blur();
+    field.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
   };
   typeAndCommit(' ONE');
-  assert.equal(comp.getAttributes()['data-prop-heading'], 'Original ONE');
-  assert.equal(stack.length, baseLength + 1, 'session 1 commits to one entry');
+  assert.equal(traitInputFor('data-prop-heading').value, 'Original ONE');
+  assert.equal(history.length, baseLength + 1, 'session 1 commits to one entry');
   click('Undo');
-  assert.equal(comp.getAttributes()['data-prop-heading'], 'Original', 'undo reverts session 1');
-  assert.equal(stack.pointer, baseLength - 1, 'pointer mid-stack after undo');
+  assert.equal(traitInputFor('data-prop-heading').value, 'Original', 'undo reverts session 1');
+  assert.equal(history.canRedo(), true, 'redo available mid-stack after undo');
   typeAndCommit(' TWO');
-  assert.equal(comp.getAttributes()['data-prop-heading'], 'Original TWO');
-  assert.equal(stack.length, baseLength + 1, 'mid-stack session commits to one entry, no leftover');
-  const entries = [];
-  stack.forEach((entry) => { entries.push(entry); });
-  const sessionEntries = entries.filter((e) => e.get('type') === 'change' && e.get('object') === comp);
-  assert.equal(sessionEntries.length, 1, 'exactly one change entry for this component on the stack');
-  assert.equal(sessionEntries[0].get('after').attributes['data-prop-heading'], 'Original TWO');
+  assert.equal(traitInputFor('data-prop-heading').value, 'Original TWO');
+  assert.equal(history.length, baseLength + 1, 'mid-stack session commits to one entry, redo tail truncated');
+  assert.equal(history.canRedo(), false, 'no redo tail after the new session');
   click('Undo');
-  assert.equal(comp.getAttributes()['data-prop-heading'], 'Original', 'one Undo click reverts the mid-stack session fully');
+  assert.equal(traitInputFor('data-prop-heading').value, 'Original', 'one Undo click reverts the mid-stack session fully');
 });
 
 test('full Undo/Redo cycle then a second edit session undoes in one click (Test B analogue)', () => {
   // Browser matrix, second half: after edit, Undo, Redo, Undo, a
-  // second typed edit could not be undone at all. Under the new
-  // mechanism each session is one entry by construction, so the
-  // second session must undo in exactly one click, with no
-  // leftover entries from either session on the stack.
+  // second typed edit could not be undone at all. Under snapshots
+  // each session is one entry by construction, so the second
+  // session must undo in exactly one click, with no leftover
+  // entries from either session in the history.
   const heroDef = registry.components.find((c) => c.id === 'section.hero');
-  const comp = selectFirstOfType('section.hero', registryLib.propsToAttributes(heroDef, { heading: 'Original' }));
-  const input = traitInputFor('data-prop-heading');
-  const um = editor.UndoManager;
-  const stack = um.getStack();
-  const baseLength = stack.length;
+  selectFirstOfType('section.hero', registryLib.propsToAttributes(heroDef, { heading: 'Original' }));
+  const baseLength = history.length;
   const click = (title) => {
     const btn = [...document.querySelector('.panel__basic-actions').querySelectorAll('.gjs-pn-btn')]
       .find((b) => b.getAttribute('title') === title);
@@ -359,60 +415,68 @@ test('full Undo/Redo cycle then a second edit session undoes in one click (Test 
     btn.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
   };
   const typeAndCommit = (text) => {
-    input.focus();
-    let cur = input.value;
+    const field = traitInputFor('data-prop-heading');
+    field.focus();
+    let cur = field.value;
     for (const ch of text) {
       cur += ch;
-      input.value = cur;
-      input.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+      field.value = cur;
+      field.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
     }
-    input.blur();
-    input.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+    field.blur();
+    field.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
   };
   typeAndCommit(' TEST');
-  assert.equal(stack.length, baseLength + 1, 'session 1 is one entry');
+  assert.equal(history.length, baseLength + 1, 'session 1 is one entry');
   click('Undo');
-  assert.equal(comp.getAttributes()['data-prop-heading'], 'Original', 'undo reverts session 1');
+  assert.equal(traitInputFor('data-prop-heading').value, 'Original', 'undo reverts session 1');
   click('Redo');
-  assert.equal(comp.getAttributes()['data-prop-heading'], 'Original TEST', 'redo restores session 1');
+  assert.equal(traitInputFor('data-prop-heading').value, 'Original TEST', 'redo restores session 1');
   click('Undo');
-  assert.equal(comp.getAttributes()['data-prop-heading'], 'Original', 'post-redo Undo reverts in exactly one click, no phantom entry');
+  assert.equal(traitInputFor('data-prop-heading').value, 'Original', 'post-redo Undo reverts in exactly one click, no phantom entry');
   typeAndCommit(' TEST2');
-  assert.equal(comp.getAttributes()['data-prop-heading'], 'Original TEST2');
-  assert.equal(stack.length, baseLength + 1, 'session 2 replaces session 1, no leftover entries');
+  assert.equal(traitInputFor('data-prop-heading').value, 'Original TEST2');
+  assert.equal(history.length, baseLength + 1, 'session 2 replaces session 1, no leftover entries');
   click('Undo');
-  assert.equal(comp.getAttributes()['data-prop-heading'], 'Original', 'second session undoes in one click');
+  assert.equal(traitInputFor('data-prop-heading').value, 'Original', 'second session undoes in one click');
   click('Redo');
-  assert.equal(comp.getAttributes()['data-prop-heading'], 'Original TEST2', 'redo restores the second session');
+  assert.equal(traitInputFor('data-prop-heading').value, 'Original TEST2', 'redo restores the second session');
 });
 
-test('drag-add still undoes sensibly with magic grouping kept', () => {
-  // Magic grouping stays ON for non-trait operations (only trait
-  // session entries carry a unique index), so a drag-add must
-  // still be undoable. jsdom cannot model magic grouping itself:
-  // Node timers freeze after GrapesJS init, so Backbone.Undo's
-  // deferred magic-index reset never runs and every entry in the
-  // process shares index 0, which would make one magic Undo remove
-  // every entry on the stack. That is a harness artifact, not
-  // product behaviour, so this test pins the single-entry path
-  // (undo(false)/redo(false)): the append's entry undoes and
-  // redoes exactly, and the browser re-test covers magic grouping
-  // for drag-add (one click reverting the whole drag).
+test('drag-add undoes and redoes in one click each with snapshot history', async () => {
+  // Previously this pinned the stock stack's single-entry path
+  // (undo(false)/redo(false)) because jsdom timers freeze and
+  // Backbone.Undo's deferred magic-index reset never runs there.
+  // Snapshots have no magic grouping at all: the append schedules
+  // one coalesced microtask push (see lib/history.mjs), so one Undo
+  // click removes the dragged block and one Redo click restores it,
+  // in jsdom exactly as in a browser. The tick await lets the
+  // coalesced push land before asserting on the history length.
+  const tick = () => new Promise((resolve) => queueMicrotask(resolve));
   const heroDef = registry.components.find((c) => c.id === 'section.hero');
-  const first = selectFirstOfType('section.hero', registryLib.propsToAttributes(heroDef, { heading: 'Kept' }));
+  selectFirstOfType('section.hero', registryLib.propsToAttributes(heroDef, { heading: 'Kept' }));
   const countHeroes = () => {
     let n = 0;
     editor.getWrapper().components().forEach((c) => { if (c.get('type') === 'section.hero') n += 1; });
     return n;
   };
+  const click = (title) => {
+    const btn = [...document.querySelector('.panel__basic-actions').querySelectorAll('.gjs-pn-btn')]
+      .find((b) => b.getAttribute('title') === title);
+    btn.focus();
+    btn.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+  };
   assert.equal(countHeroes(), 1);
+  assert.equal(history.length, 1, 'baseline is the only entry before the drag-add');
   editor.getWrapper().append({ type: 'section.hero', attributes: { ...registryLib.propsToAttributes(heroDef, { heading: 'Dragged' }), 'data-astro-element-id': 'el-drag-test-1' } });
   assert.equal(countHeroes(), 2, 'drag-add appends a second hero');
-  editor.UndoManager.undo(false);
-  assert.equal(countHeroes(), 1, 'undo removes the dragged component');
-  assert.ok(editor.getWrapper().components().at(0) === first, 'the original hero remains');
-  editor.UndoManager.redo(false);
-  assert.equal(countHeroes(), 2, 'redo restores the dragged component');
+  await tick();
+  assert.equal(history.length, 2, 'drag-add pushes exactly one entry');
+  click('Undo');
+  assert.equal(countHeroes(), 1, 'one Undo click removes the dragged component');
+  assert.equal(history.canUndo(), false, 'Undo at baseline after removing the drag-add');
+  click('Redo');
+  assert.equal(countHeroes(), 2, 'one Redo click restores the dragged component');
 });
 
 test('Enter in a single-line trait input blurs it; Enter in a textarea does not', () => {
@@ -420,8 +484,7 @@ test('Enter in a single-line trait input blurs it; Enter in a textarea does not'
   const comp = selectFirstOfType('section.hero', registryLib.propsToAttributes(heroDef, { heading: 'Original' }));
   const input = traitInputFor('data-prop-heading');
   editor.Panels.getButton('panel-switcher', 'show-traits').set('active', true);
-  const um = editor.UndoManager;
-  const beforeLength = um.getStack().length;
+  const beforeLength = history.length;
   input.focus();
   assert.equal(document.activeElement, input, 'input focused before Enter');
   let cur = input.value;
@@ -431,13 +494,13 @@ test('Enter in a single-line trait input blurs it; Enter in a textarea does not'
     input.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
   }
   assert.equal(comp.getAttributes()['data-prop-heading'], 'Original ENTER');
-  assert.equal(um.getStack().length, beforeLength, 'typing alone records nothing');
+  assert.equal(history.length, beforeLength, 'typing alone records nothing');
   input.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
   assert.notEqual(document.activeElement, input, 'Enter blurs a single-line input');
   // jsdom fires no change on blur, so the browser's blur-change is
   // dispatched explicitly; it must commit the session to one entry.
   input.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
-  assert.equal(um.getStack().length, beforeLength + 1, 'Enter-committed session is one entry');
+  assert.equal(history.length, beforeLength + 1, 'Enter-committed session is one entry');
   assert.equal(comp.getAttributes()['data-prop-heading'], 'Original ENTER');
 
   const gridDef = registry.components.find((c) => c.id === 'section.feature-grid');
