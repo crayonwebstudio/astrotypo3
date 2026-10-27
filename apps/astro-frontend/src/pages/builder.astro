@@ -644,12 +644,22 @@ const builderConfig = {
       registerTextareaTraitType(editor);
       // Live trait application: typing in a trait field applies on
       // 'input' (canvas + dirty indicator update while typing).
-      // JSON props are validated on commit ('change'), not per
-      // keystroke, so mid-typing JSON does not flash errors.
+      // JSON props are validated live, before applying: invalid JSON
+      // never touches the component attribute, so it can never wipe
+      // the rendered items, and the error shows at once in the
+      // status line (plus a red border on the field itself, set by
+      // lib/liveTraits). A valid value clears the JSON error status
+      // only when the status is currently showing one, so valid
+      // keystrokes never clobber an unrelated status message.
       wireLiveTraits(editor, document.getElementById('traits-box'), {
         getDef: (componentId) => registryById().get(componentId),
         onJsonError: (prop, message) => setStatus('Invalid JSON in field "' + prop + '": ' + message),
-        onJsonClear: () => { /* a later valid value leaves the status alone; save re-checks */ },
+        onJsonClear: () => {
+          const statusEl = document.getElementById('status');
+          if (statusEl && statusEl.textContent.startsWith('Invalid JSON')) {
+            setStatus(client.base ? 'Builder ready. Storage: live TYPO3.' : 'Builder ready. Storage: demo API.');
+          }
+        },
       });
       wireCanvasDblClick();
 
