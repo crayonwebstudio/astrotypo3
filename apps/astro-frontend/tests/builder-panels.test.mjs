@@ -51,8 +51,13 @@ test('device buttons use the builder device commands with one active', () => {
 test('basic actions mix core commands with our save, validate and publish commands', () => {
   const actions = panelById(buildPanelsConfig(), PANEL_IDS.basicActions);
   const byId = new Map(actions.buttons.map((b) => [b.id, b]));
-  assert.equal(byId.get('undo').command, 'core:undo');
-  assert.equal(byId.get('redo').command, 'core:redo');
+  // Undo/Redo go through momentary wrapper commands (builder-undo /
+  // builder-redo) that blur a focused trait input first and then run
+  // the core commands; wiring them straight to core:undo/core:redo
+  // left the toolbar click fighting the trait input's blur commit
+  // in the browser reproduction.
+  assert.equal(byId.get('undo').command, 'builder-undo');
+  assert.equal(byId.get('redo').command, 'builder-redo');
   assert.equal(byId.get('visibility').command, 'sw-visibility');
   assert.equal(byId.get('preview').command, 'preview');
   assert.equal(byId.get('fullscreen').command, 'fullscreen');
