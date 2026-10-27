@@ -720,6 +720,19 @@ const builderConfig = {
         // which always happens after init completes.
         onSessionStart: () => { if (history) history.beginTraitSession(); },
         onSessionCommit: () => { if (history) history.commitTraitSession(); },
+        // Dirty indicator on live input: partial applies skip the
+        // change counter and the editor 'update' event, so without
+        // this a canvas change from typing (or from a native input
+        // undo) would leave the indicator stale; the snapshot
+        // compare reports the true state either way.
+        onLiveInput: () => refreshDirtyFromSnapshot(),
+        // History shortcuts from inside a trait field (lib/liveTraits):
+        // GrapesJS keymaps never fire there, so the trait keydown
+        // handler routes them here instead of letting the browser's
+        // native input undo/redo take over without any history or
+        // dirty bookkeeping.
+        onUndoKey: () => { if (history) history.undo(); },
+        onRedoKey: () => { if (history) history.redo(); },
         onJsonError: (prop, message) => setStatus('Invalid JSON in field "' + prop + '": ' + message),
         onJsonClear: () => {
           const statusEl = document.getElementById('status');
