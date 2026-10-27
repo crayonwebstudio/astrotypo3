@@ -24,10 +24,15 @@
 //
 // Command ids: device and view switching plus our own actions
 // (Save draft, Validate, Publish) are registered by
-// registerBuilderCommands below. Visibility, preview, fullscreen, code
-// export and undo/redo use GrapesJS core commands ('sw-visibility',
-// 'preview', 'fullscreen', 'export-template', 'core:undo', 'core:redo'),
-// verified against the installed grapesjs 0.23.8 command registry.
+// registerBuilderCommands below. Visibility, preview, fullscreen and
+// code export use GrapesJS core commands ('sw-visibility', 'preview',
+// 'fullscreen', 'export-template'), verified against the installed
+// grapesjs 0.23.8 command registry. Undo/redo do NOT use
+// core:undo/core:redo any more: they route to the builder snapshot
+// history (lib/history.mjs) through handlers.onUndo/handlers.onRedo.
+// The stock UndoManager is abandoned (see lib/history.mjs): its
+// magic grouping wiped the canvas once, Redo did not restore, and
+// drag-add did not undo.
 //
 // Active state follows the GrapesJS button idiom, which is load bearing:
 // ButtonView flips a button's active flag on click and reacts to the
@@ -190,40 +195,42 @@ export function registerBuilderCommands(editor, handlers = {}) {
   editor.Commands.add(COMMAND_IDS.validate, { run() { if (handlers.onValidate) handlers.onValidate(); } });
   editor.Commands.add(COMMAND_IDS.publish, { run() { if (handlers.onPublish) handlers.onPublish(); } });
 
-  // Undo as a momentary custom command wrapping the core command,
-  // instead of wiring the button straight to 'core:undo'. The
-  // browser reproduction behind this: after a trait edit, the
-  // toolbar Undo click produced no visible change while keyboard
-  // Ctrl+Z after clicking the canvas did undo. The button path itself
-  // reproduces fine in jsdom (see tests/live-traits.test.mjs), so the
-  // browser difference is focus: a click on the toolbar first blurs a
-  // focused trait input, and a pending (pre-live-traits) edit commits
-  // on that blur in the same interaction as the undo. Blurring first
-  // makes the order explicit (commit, then undo) instead of leaving
-  // it to mousedown/click ordering, and with live traits the blur is
-  // a no-op because every keystroke is already applied. Run only, so
-  // the button stays momentary like Save/Validate/Publish.
+  // Undo/Redo as momentary custom commands routing to the builder
+  // snapshot history (handlers.onUndo/handlers.onRedo, lib/history),
+  // never to core:undo/core:redo. The handlers object is read at
+  // click time, so the builder page may attach the history after
+  // init (the commands are registered by a plugin during init,
+  // before the history instance exists); a missing handler is a
+  // no-op, never a fall back to the stock stack.
   //
-  // Redo deliberately does NOT blur first (27 Oct 2026). A blur
-  // before redo can only hurt: if the focused trait input holds a
-  // value that differs from the component attribute (a stale resync,
-  // or invalid JSON text that live validation refused to apply), the
-  // blur's change commit applies that value as a NEW undo entry, and
-  // Backbone.Undo discards the whole redo tail (entries after the
-  // pointer) when a new entry is added, so the entry Redo was about
-  // to restore is gone before core:redo runs. Redo has no
+  // Undo still blurs first: a click on the toolbar first blurs a
+  // focused trait input, and that blur's change commit pushes the
+  // session's post-edit snapshot to the history, so the undo that
+  // follows reverts the whole just-committed edit instead of
+  // racing it. Blurring first makes the order explicit (commit,
+  // then undo) instead of leaving it to mousedown/click ordering.
+  //
+  // Redo deliberately does NOT blur first (27 Oct 2026, unchanged
+  // in the history design). A blur before redo can only hurt: if
+  // the focused trait input holds a value that differs from the
+  // component attribute (a stale resync, or invalid JSON text that
+  // live validation refused to apply), the blur's change commit
+  // pushes that value as a NEW history entry, and a new entry after
+  // an Undo truncates the redo tail, so the entry Redo was about to
+  // restore is gone before Redo runs. Redo has no
   // commit-then-redo ordering need: live applies are already applied
-  // on every keystroke, and an open edit session already puts the
-  // pointer at the stack end, where redo is a no-op either way.
-  // So Redo runs core:redo directly, and a focused input keeps its
-  // value untouched by the click.
+  // on every keystroke, and an open edit session already sits at
+  // the history end, where redo is a no-op either way. So Redo runs
+  // the history directly, and a focused input keeps its value
+  // untouched by the click. Run only, so both buttons stay
+  // momentary like Save/Validate/Publish.
   const blurTraitInput = () => {
     if (typeof document === 'undefined') return;
     const active = document.activeElement;
     const traitsBox = document.getElementById('traits-box');
     if (active && traitsBox && traitsBox.contains(active)) active.blur();
   };
-  editor.Commands.add(COMMAND_IDS.undo, { run(ed) { blurTraitInput(); ed.runCommand('core:undo'); } });
-  editor.Commands.add(COMMAND_IDS.redo, { run(ed) { ed.runCommand('core:redo'); } });
+  editor.Commands.add(COMMAND_IDS.undo, { run() { blurTraitInput(); if (handlers.onUndo) handlers.onUndo(); } });
+  editor.Commands.add(COMMAND_IDS.redo, { run() { if (handlers.onRedo) handlers.onRedo(); } });
   return editor;
 }
