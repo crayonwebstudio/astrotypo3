@@ -13,14 +13,29 @@
 // the later blur/change commit is a no-op (same value, Backbone set
 // skips unchanged attributes), never a double apply.
 //
-// Undo granularity trade-off, stated plainly: live applies are full
+// Undo granularity, stated plainly: live applies are full
 // (non-partial) applies, because GrapesJS skips both the dirty counter
 // and the undo stack for partial/avoidStore applies
 // (EditorModel.handleUpdates returns early on opt.partial, and the
-// UndoManager change handler skips on opts.partial). So each keystroke
-// is its own undo step, where the old blur-commit behaviour was one
-// step per field edit. Live feedback was judged worth that trade; the
-// toolbar Undo button still reverts, one step at a time.
+// UndoManager change handler skips on opts.partial). Per keystroke,
+// that would make each keystroke its own undo step, which is why a
+// browser user typing " TEST" and clicking Undo three times saw the
+// edit still standing: in a real browser each keystroke lands in its
+// own task, so Backbone.Undo's magic grouping (same callstack) does
+// not group them, and one Undo click reverts one keystroke. So a
+// trait edit session (first input until commit on change/blur or
+// deselect) is collapsed into exactly one undo entry on commit: the
+// per-keystroke entries are removed from the stack tail and one
+// entry is added by silently restoring the pre-edit value and then
+// applying the final value as a full apply (Backbone sets
+// _previousAttributes at the start of every top-level set, silent or
+// not, so the full apply's undo entry records the pre-edit state).
+// One toolbar Undo click therefore reverts the whole field edit, and
+// one Redo restores it, matching the old blur-commit behaviour while
+// keeping live canvas feedback. Collapse only happens when the
+// session's entries are a clean tail of the stack (pointer at the
+// end, every entry a change on this component); otherwise the entries
+// are left exactly as GrapesJS recorded them.
 //
 // Canvas text is NOT directly editable in this slice, by design:
 // leaf component views render static innerHTML from props, so there
@@ -143,21 +158,149 @@ export function registerTextareaTraitType(editor) {
  * Wire live trait application onto a traits panel element.
  * options: { getDef(componentId) -> registry def or undefined,
  *   onJsonError(propName, message), onJsonClear(propName) }.
- * 'input' applies live. 'change' additionally validates JSON props
- * (array/object specs): typing JSON is noisy mid-keystroke, so the
- * error surfaces on commit (blur/Enter), not while typing.
+ * 'input' applies live, with two guards. First, for array/object
+ * props the raw text is validated as JSON BEFORE applying: invalid
+ * JSON is never applied, so attributesToProps can never silently
+ * fall back to [] and wipe the rendered items live (the previous
+ * behaviour: every keystroke applied, invalid text parsed to [] on
+ * render, all cards vanished before any commit or save validation
+ * could run). An invalid value reports through onJsonError at once
+ * and marks the input (aria-invalid, red border, message as title);
+ * a valid value applies and clears the mark through onJsonClear.
+ * Second, edit sessions collapse to one undo entry on commit (see
+ * the module header). 'change' commits the session for that input
+ * and re-validates JSON props; deselect commits any open sessions.
  */
 export function wireLiveTraits(editor, traitsBox, options = {}) {
   if (!editor || !traitsBox) return () => {};
   const { getDef, onJsonError, onJsonClear } = options;
+  // Open edit sessions, keyed by input element: { comp, attrName,
+  // preValue, startLength }. preValue is the attribute value before
+  // the session's first live apply.
+  const sessions = new Map();
+
+  function undoStack() {
+    try { return editor.UndoManager ? editor.UndoManager.getStack() : null; } catch { return null; }
+  }
+
+  // Array/object prop info for an input element, or null when the
+  // input is not such a prop (or the def is unknown).
+  function jsonPropForInput(inputEl) {
+    if (!getDef) return null;
+    let selected = null;
+    try { selected = editor.getSelected(); } catch { selected = null; }
+    if (!selected) return null;
+    const attrs = (selected.getAttributes && selected.getAttributes()) || {};
+    const componentId = attrs['data-astro-component-id'] || (selected.get && selected.get('type')) || '';
+    const def = getDef(componentId);
+    if (!def) return null;
+    const trait = findTraitForInput(editor, inputEl);
+    if (!trait) return null;
+    const attrName = trait.getName ? trait.getName() : '';
+    if (!attrName.startsWith(PROP_ATTRIBUTE_PREFIX)) return null;
+    const propName = attrName.slice(PROP_ATTRIBUTE_PREFIX.length);
+    const spec = (def.props || {})[propName];
+    if (!spec || (spec.type !== 'array' && spec.type !== 'object')) return null;
+    return { propName, attrName, spec };
+  }
+
+  function setJsonErrorVisual(inputEl, message) {
+    try {
+      inputEl.setAttribute('aria-invalid', 'true');
+      inputEl.title = message;
+      inputEl.style.borderColor = '#e5484d';
+    } catch { /* input gone */ }
+  }
+  function clearJsonErrorVisual(inputEl) {
+    try {
+      inputEl.removeAttribute('aria-invalid');
+      inputEl.title = '';
+      inputEl.style.borderColor = '';
+    } catch { /* input gone */ }
+  }
+
+  function startSession(inputEl) {
+    if (sessions.has(inputEl)) return sessions.get(inputEl);
+    const trait = findTraitForInput(editor, inputEl);
+    if (!trait) return null;
+    let comp = null;
+    try { comp = editor.getSelected(); } catch { comp = null; }
+    if (!comp) return null;
+    const attrName = trait.getName ? trait.getName() : '';
+    if (!attrName) return null;
+    const stack = undoStack();
+    const session = {
+      comp,
+      attrName,
+      preValue: ((comp.getAttributes && comp.getAttributes()) || {})[attrName],
+      startLength: stack ? stack.length : 0,
+    };
+    sessions.set(inputEl, session);
+    return session;
+  }
+
+  // Collapse one session to a single undo entry. No-op unless the
+  // session's entries are a clean tail of the stack (pointer at the
+  // end, every entry since session start a change on this
+  // component). A round trip (final value equals pre-edit value)
+  // removes the entries and adds nothing.
+  function commitSession(inputEl) {
+    const session = sessions.get(inputEl);
+    if (!session) return;
+    sessions.delete(inputEl);
+    const stack = undoStack();
+    if (!stack || !Array.isArray(stack.models)) return;
+    const tail = stack.models.slice(session.startLength);
+    const pointerAtEnd = typeof stack.pointer !== 'number' || stack.pointer === stack.length - 1;
+    let tailClean = true;
+    for (const entry of tail) {
+      try {
+        if (!(entry.get('type') === 'change' && entry.get('object') === session.comp)) { tailClean = false; break; }
+      } catch { tailClean = false; break; }
+    }
+    if (!pointerAtEnd || !tailClean) return;
+    for (let i = tail.length - 1; i >= 0; i--) {
+      try { stack.remove(tail[i]); } catch { /* keep going */ }
+    }
+    try { stack.pointer = session.startLength - 1; } catch { /* pointer stays */ }
+    let finalValue;
+    try { finalValue = ((session.comp.getAttributes && session.comp.getAttributes()) || {})[session.attrName]; } catch { return; }
+    if (finalValue !== session.preValue) {
+      // Silent restore first: no change event, no undo entry, no
+      // canvas re-render, but Backbone records the restored state
+      // as _previousAttributes. The full apply that follows then
+      // records exactly one undo entry whose before is pre-edit.
+      try { session.comp.addAttributes({ [session.attrName]: session.preValue }, { silent: true }); } catch { return; }
+      try { session.comp.addAttributes({ [session.attrName]: finalValue }); } catch { /* attribute stays restored */ }
+    }
+  }
+  function commitAllSessions() {
+    for (const inputEl of [...sessions.keys()]) commitSession(inputEl);
+  }
+
   const onInput = (event) => {
     const target = event.target;
     if (!target || !/^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
+    const json = jsonPropForInput(target);
+    if (json) {
+      try {
+        JSON.parse(target.value);
+        clearJsonErrorVisual(target);
+        if (onJsonClear) onJsonClear(json.propName);
+      } catch (err) {
+        const message = err && err.message ? err.message : String(err);
+        setJsonErrorVisual(target, 'Invalid JSON: ' + message);
+        if (onJsonError) onJsonError(json.propName, message);
+        return;
+      }
+    }
+    startSession(target);
     applyTraitInput(editor, target);
   };
   const onChange = (event) => {
     const target = event.target;
     if (!target || !/^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
+    commitSession(target);
     if (!getDef) return;
     let selected = null;
     try { selected = editor.getSelected(); } catch { selected = null; }
@@ -176,16 +319,26 @@ export function wireLiveTraits(editor, traitsBox, options = {}) {
     const raw = target.value;
     try {
       JSON.parse(raw);
+      clearJsonErrorVisual(target);
       if (onJsonClear) onJsonClear(propName);
     } catch (err) {
-      if (onJsonError) onJsonError(propName, err && err.message ? err.message : String(err));
+      const message = err && err.message ? err.message : String(err);
+      setJsonErrorVisual(target, 'Invalid JSON: ' + message);
+      if (onJsonError) onJsonError(propName, message);
     }
   };
+  // A selection change ends any open edit session (the click that
+  // selects another component blurs the old input first, so its
+  // change commit normally runs before this; this is the backstop
+  // for sessions whose input is detached without a change event).
+  const onDeselected = () => { commitAllSessions(); };
+  try { if (editor.on) editor.on('component:deselected', onDeselected); } catch { /* no event bus */ }
   traitsBox.addEventListener('input', onInput);
   traitsBox.addEventListener('change', onChange);
   return () => {
     traitsBox.removeEventListener('input', onInput);
     traitsBox.removeEventListener('change', onChange);
+    try { if (editor.off) editor.off('component:deselected', onDeselected); } catch { /* already gone */ }
   };
 }
 
