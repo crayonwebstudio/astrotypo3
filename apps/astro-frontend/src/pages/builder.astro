@@ -317,6 +317,7 @@ const builderConfig = {
     import { createDirtyTracker } from '../lib/dirtyTracking.mjs';
     import { registerTextareaTraitType, wireLiveTraits, findInvalidJsonProps, canonicalStringify, PRIMARY_TEXT_TRAIT, focusPrimaryTextTrait } from '../lib/liveTraits.mjs';
     import { expandLayers } from '../lib/layerExpand.mjs';
+    import { createHistory, installHistoryKeymaps } from '../lib/history.mjs';
     import { validatePage, validateChangePlan } from '../lib/validate.mjs';
     import { auditPage } from '../lib/audit.mjs';
 
@@ -355,6 +356,14 @@ const builderConfig = {
     };
 
     let editor = null;
+    // Builder snapshot history (lib/history.mjs): created in
+    // initEditor, after the editor exists. Panel commands and trait
+    // hooks read this variable at call time, so the history may be
+    // attached after the commands are registered (a plugin registers
+    // them during grapesjs.init, before any history instance can
+    // exist); a null history means undo/redo are no-ops, never a
+    // fall back to the stock UndoManager.
+    let history = null;
     let uid = 1000;
     // Status line: the visible text stays short enough to read in the
     // top bar (the bar ellipsises overflow, which cut the old ready
@@ -479,6 +488,12 @@ const builderConfig = {
       // so after Reset (and after any page load) the indicator kept
       // the previous edit's stale "Unsaved changes".
       savedSnapshot = currentSnapshot();
+      // History baseline too: the loaded page IS entry 0, so Undo at
+      // baseline is a safe no-op and can never wipe the loaded page
+      // (no load group sits on the history stack at all). This also
+      // discards any intermediate pushes the load's component:add
+      // events produced before the load completed.
+      if (history) history.reset();
       if (dirtyTracker) await dirtyTracker.settleAndMarkClean();
     }
 
@@ -563,7 +578,50 @@ const builderConfig = {
       onSave: () => { void saveDraft(); },
       onValidate: () => validateCurrent(),
       onPublish: () => { void publishNow(); },
+      // Snapshot history (lib/history.mjs), never core:undo/core:redo.
+      onUndo: () => { if (history) history.undo(); },
+      onRedo: () => { if (history) history.redo(); },
     };
+
+    // After a history restore: re-expand Layers, re-select the
+    // component that was selected before the restore (by its
+    // data-astro-element-id, when it still exists), and refresh the
+    // dirty indicator from the serialization-vs-saved-snapshot
+    // compare (not from the stock change counter, which a restore
+    // itself moves). Falls back to no selection only when that
+    // element is genuinely gone (e.g. after undoing an add).
+    function refreshDirtyFromSnapshot() {
+      if (!editor || savedSnapshot === null) return;
+      const cur = currentSnapshot();
+      if (cur !== null && cur === savedSnapshot) markClean();
+      else showUnsaved(1);
+    }
+    function afterHistoryRestore(elementId) {
+      expandLayers(editor);
+      let found = null;
+      if (elementId) {
+        const walk = (list) => {
+          for (const comp of list) {
+            const attrs = (comp.getAttributes && comp.getAttributes()) || {};
+            if (attrs['data-astro-element-id'] === elementId) { found = comp; return true; }
+            const kids = [];
+            try { comp.components().forEach((k) => kids.push(k)); } catch {}
+            if (kids.length && walk(kids)) return true;
+          }
+          return false;
+        };
+        const top = [];
+        try { editor.getWrapper().components().forEach((c) => top.push(c)); } catch {}
+        walk(top);
+      }
+      if (found) {
+        try { editor.select(found); } catch {}
+      } else {
+        try { if (editor.getSelected()) editor.select(null); } catch {}
+        document.getElementById('selected-info').textContent = 'No element selected. Select a block on the canvas to edit its traits (tt_content fields).';
+      }
+      refreshDirtyFromSnapshot();
+    }
 
     // Canvas double-click: leaf views render static innerHTML from
     // props, so there is no editable text node and double-clicking
@@ -653,6 +711,15 @@ const builderConfig = {
       // keystrokes never clobber an unrelated status message.
       wireLiveTraits(editor, document.getElementById('traits-box'), {
         getDef: (componentId) => registryById().get(componentId),
+        // Snapshot history session hooks (lib/history.mjs): the
+        // pre-edit state is ensured at the first input of a session
+        // and the post-edit state is pushed at commit, so one Undo
+        // reverts one whole field edit. The hooks read the history
+        // variable at call time (it is created at the end of
+        // initEditor, below); sessions only start on user input,
+        // which always happens after init completes.
+        onSessionStart: () => { if (history) history.beginTraitSession(); },
+        onSessionCommit: () => { if (history) history.commitTraitSession(); },
         onJsonError: (prop, message) => setStatus('Invalid JSON in field "' + prop + '": ' + message),
         onJsonClear: () => {
           const statusEl = document.getElementById('status');
@@ -692,6 +759,17 @@ const builderConfig = {
         document.getElementById('selected-info').textContent = 'No element selected. Select a block on the canvas to edit its traits (tt_content fields).';
       });
       editor.on('update', markDirty);
+
+      // Snapshot history (lib/history.mjs), created last on purpose:
+      // attach() subscribes to component:add AFTER the element-id
+      // handler above, so a pushed snapshot of a dropped block
+      // already carries its data-astro-element-id (listener order is
+      // registration order). Keyboard shortcuts are rerouted from
+      // the stock keymaps to this history here, after init, when
+      // the default keymaps are registered.
+      history = createHistory(editor, { onRestore: afterHistoryRestore });
+      history.attach();
+      installHistoryKeymaps(editor, history);
     }
 
     async function loadInitialPage() {
