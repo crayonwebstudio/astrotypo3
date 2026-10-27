@@ -190,9 +190,9 @@ export function registerBuilderCommands(editor, handlers = {}) {
   editor.Commands.add(COMMAND_IDS.validate, { run() { if (handlers.onValidate) handlers.onValidate(); } });
   editor.Commands.add(COMMAND_IDS.publish, { run() { if (handlers.onPublish) handlers.onPublish(); } });
 
-  // Undo/Redo as momentary custom commands wrapping the core commands,
-  // instead of wiring the buttons straight to 'core:undo'/'core:redo'.
-  // The browser reproduction behind this: after a trait edit, the
+  // Undo as a momentary custom command wrapping the core command,
+  // instead of wiring the button straight to 'core:undo'. The
+  // browser reproduction behind this: after a trait edit, the
   // toolbar Undo click produced no visible change while keyboard
   // Ctrl+Z after clicking the canvas did undo. The button path itself
   // reproduces fine in jsdom (see tests/live-traits.test.mjs), so the
@@ -203,6 +203,20 @@ export function registerBuilderCommands(editor, handlers = {}) {
   // it to mousedown/click ordering, and with live traits the blur is
   // a no-op because every keystroke is already applied. Run only, so
   // the button stays momentary like Save/Validate/Publish.
+  //
+  // Redo deliberately does NOT blur first (27 Oct 2026). A blur
+  // before redo can only hurt: if the focused trait input holds a
+  // value that differs from the component attribute (a stale resync,
+  // or invalid JSON text that live validation refused to apply), the
+  // blur's change commit applies that value as a NEW undo entry, and
+  // Backbone.Undo discards the whole redo tail (entries after the
+  // pointer) when a new entry is added, so the entry Redo was about
+  // to restore is gone before core:redo runs. Redo has no
+  // commit-then-redo ordering need: live applies are already applied
+  // on every keystroke, and an open edit session already puts the
+  // pointer at the stack end, where redo is a no-op either way.
+  // So Redo runs core:redo directly, and a focused input keeps its
+  // value untouched by the click.
   const blurTraitInput = () => {
     if (typeof document === 'undefined') return;
     const active = document.activeElement;
@@ -210,6 +224,6 @@ export function registerBuilderCommands(editor, handlers = {}) {
     if (active && traitsBox && traitsBox.contains(active)) active.blur();
   };
   editor.Commands.add(COMMAND_IDS.undo, { run(ed) { blurTraitInput(); ed.runCommand('core:undo'); } });
-  editor.Commands.add(COMMAND_IDS.redo, { run(ed) { blurTraitInput(); ed.runCommand('core:redo'); } });
+  editor.Commands.add(COMMAND_IDS.redo, { run(ed) { ed.runCommand('core:redo'); } });
   return editor;
 }
