@@ -37,6 +37,29 @@
 // end, every entry a change on this component); otherwise the entries
 // are left exactly as GrapesJS recorded them.
 //
+// Grouping guard, load bearing for Redo (27 Oct 2026): GrapesJS's
+// module undo/redo default to magic grouping (UndoManagerModule
+// undo/redo pass all=true), so one Undo/Redo applies to EVERY stack
+// entry sharing the acted entry's magicFusionIndex, and moves the
+// pointer by the group size, not by one. Backbone.Undo assigns that
+// index per callstack (reset by a deferred timer), so entries that
+// happen to share a callstack share an index. A jsdom reproduction
+// proved the hazard: with all entries sharing one index (jsdom
+// timers freeze after GrapesJS init, so the deferred reset never
+// runs), one magic Undo undid BOTH the collapsed change entry AND
+// the older component-add entry, moving the pointer to -1 and
+// removing the component from its collection; the matching magic
+// Redo then re-added it and restored the value, so a test asserting
+// only the attribute passed while the stack bookkeeping was corrupt.
+// The same hazard applies in a real browser whenever the collapse's
+// callstack shares its index with another surviving entry. The
+// collapsed entry therefore gets a unique group index immediately
+// after creation (a string no numeric callstack index can equal),
+// so magic Undo/Redo of a collapsed session touch exactly that one
+// entry and move the pointer by exactly one, whatever else shares a
+// callstack. Other entries keep their natural indices and normal
+// magic behaviour is unchanged for them.
+//
 // Canvas text is NOT directly editable in this slice, by design:
 // leaf component views render static innerHTML from props, so there
 // is no editable text node to double-click into. Double-clicking a
@@ -171,6 +194,11 @@ export function registerTextareaTraitType(editor) {
  * the module header). 'change' commits the session for that input
  * and re-validates JSON props; deselect commits any open sessions.
  */
+// Monotonic counter for collapsed-entry group indices. A string
+// prefix guarantees no collision with Backbone.Undo's numeric
+// per-callstack indices (see the module header).
+let collapseCounter = 0;
+
 export function wireLiveTraits(editor, traitsBox, options = {}) {
   if (!editor || !traitsBox) return () => {};
   const { getDef, onJsonError, onJsonClear } = options;
@@ -272,6 +300,18 @@ export function wireLiveTraits(editor, traitsBox, options = {}) {
       // records exactly one undo entry whose before is pre-edit.
       try { session.comp.addAttributes({ [session.attrName]: session.preValue }, { silent: true }); } catch { return; }
       try { session.comp.addAttributes({ [session.attrName]: finalValue }); } catch { /* attribute stays restored */ }
+      // Grouping guard (see the module header): the full apply's
+      // entry is the new stack tail; give it a unique group index
+      // so magic Undo/Redo touch exactly this entry and move the
+      // pointer by exactly one. Guarded to the tail entry being
+      // this session's change; if anything else is on top, leave
+      // the stack exactly as GrapesJS recorded it.
+      try {
+        const tailEntry = stack.at(stack.length - 1);
+        if (tailEntry && tailEntry.get('type') === 'change' && tailEntry.get('object') === session.comp) {
+          tailEntry.set('magicFusionIndex', 'astro-collapse-' + (++collapseCounter), { silent: true });
+        }
+      } catch { /* grouping guard is best effort; the entry itself stands */ }
     }
   }
   function commitAllSessions() {
