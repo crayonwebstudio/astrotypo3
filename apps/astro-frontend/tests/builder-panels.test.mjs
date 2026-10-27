@@ -52,10 +52,11 @@ test('basic actions mix core commands with our save, validate and publish comman
   const actions = panelById(buildPanelsConfig(), PANEL_IDS.basicActions);
   const byId = new Map(actions.buttons.map((b) => [b.id, b]));
   // Undo/Redo go through momentary wrapper commands (builder-undo /
-  // builder-redo) that blur a focused trait input first and then run
-  // the core commands; wiring them straight to core:undo/core:redo
-  // left the toolbar click fighting the trait input's blur commit
-  // in the browser reproduction.
+  // builder-redo) that route to the builder snapshot history
+  // (lib/history.mjs), never to core:undo/core:redo; undo still
+  // blurs a focused trait input first so its session commits before
+  // the undo runs, redo still does not blur so it cannot truncate
+  // the redo tail with a fresh commit.
   assert.equal(byId.get('undo').command, 'builder-undo');
   assert.equal(byId.get('redo').command, 'builder-redo');
   assert.equal(byId.get('visibility').command, 'sw-visibility');
